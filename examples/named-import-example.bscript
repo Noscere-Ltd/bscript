@@ -1,0 +1,29 @@
+// Named Import Example
+// Demonstrates importing code with a name and calling it multiple times
+
+// Import specific operations with names
+import andOp from './libs/bitwise-ops.bscript'
+import orOp from './libs/bitwise-ops.bscript'
+
+// Now we can use these names like function calls
+// Each time the name appears, the imported code is inlined
+
+// Call andOp - this inlines "12 10 and"
+andOp
+// Stack: [8]
+
+verify
+
+// Call orOp - this inlines "12 10 or"
+orOp
+// Stack: [8, 14]
+
+verify
+
+// We can call them multiple times
+andOp
+// Stack: [8, 14, 8]
+
+verify
+
+// The imported code is executed inline each time the name is used

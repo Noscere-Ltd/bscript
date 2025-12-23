@@ -1,0 +1,24 @@
+// Common Bitcoin Script Macros Library
+// This file contains reusable macro definitions that can be imported into other scripts
+
+// Duplicate and verify non-zero
+// Usage: dup verify
+// Result: Fails if top stack value is 0 or false
+
+// Swap and drop second item
+// Usage: swap drop
+// Result: Removes second-from-top item, keeps top
+
+// Triple the top stack value
+// Usage: dup dup add add
+// Stack: [x] -> [3x]
+dup dup add add
+
+// Square the top stack value
+// Usage: dup mul
+// Stack: [x] -> [x²]
+
+// Check if value is in range [min, max]
+// Stack before: [value, min, max]
+// Stack after: [1 if in range, 0 otherwise]
+// Usage: over over greaterThanOrEqual rot rot lessThanOrEqual and

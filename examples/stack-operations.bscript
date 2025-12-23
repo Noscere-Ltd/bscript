@@ -1,0 +1,42 @@
+// Bitcoin Script Example: Stack Manipulation
+// Demonstrates stack operation opcodes
+
+// Push some values
+1 2 3 4 5
+// Stack: [1, 2, 3, 4, 5]
+
+// Duplicate top element
+dup
+// Stack: [1, 2, 3, 4, 5, 5]
+
+// Swap top two elements
+swap
+// Stack: [1, 2, 3, 4, 5, 5]
+
+// Over - copy second element to top
+over
+// Stack: [1, 2, 3, 4, 5, 5, 5]
+
+// Drop top element
+drop
+// Stack: [1, 2, 3, 4, 5, 5]
+
+// Rotate top 3 elements
+rot
+// Stack: [1, 2, 3, 5, 5, 4]
+
+// 2dup - duplicate top 2 elements
+2dup
+// Stack: [1, 2, 3, 5, 5, 4, 5, 4]
+
+// 2swap - swap top 2 pairs
+2swap
+// Stack: [1, 2, 3, 5, 5, 4, 5, 4]
+
+// Tuck - copy top before second
+tuck
+// Stack: [1, 2, 3, 5, 5, 4, 4, 5, 4]
+
+// Get stack depth
+depth
+// Stack: [1, 2, 3, 5, 5, 4, 4, 5, 4, 9]

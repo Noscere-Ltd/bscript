@@ -1,0 +1,20 @@
+// Bitwise Operations Library
+// Reusable bitwise operation macros
+
+// @define andOp
+// Performs AND on top two stack items
+// Stack: [a, b] -> [a & b]
+12 10 and
+// @end
+
+// @define orOp
+// Performs OR on top two stack items
+// Stack: [a, b] -> [a | b]
+12 10 or
+// @end
+
+// @define xorOp
+// Performs XOR on top two stack items
+// Stack: [a, b] -> [a ^ b]
+12 10 xor
+// @end

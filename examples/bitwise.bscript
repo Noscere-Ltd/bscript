@@ -1,0 +1,32 @@
+// Bitcoin Script Example: Bitwise Operations
+// Demonstrates bitwise logic opcodes
+
+// AND operation
+// Binary: 1100 (12) & 1010 (10) = 1000 (8)
+12 10 and
+// Stack: [8]
+
+// OR operation
+// Binary: 1100 (12) | 1010 (10) = 1110 (14)
+12 10 or
+// Stack: [8, 14]
+
+// XOR operation
+// Binary: 1100 (12) ^ 1010 (10) = 0110 (6)
+12 10 xor
+// Stack: [8, 14, 6]
+
+// Left shift
+// Binary: 101 (5) << 2 = 10100 (20)
+5 2 lShift
+// Stack: [8, 14, 6, 20]
+
+// Right shift
+// Binary: 10100 (20) >> 2 = 101 (5)
+20 2 rShift
+// Stack: [8, 14, 6, 20, 5]
+
+// Invert (bitwise NOT)
+// ~5 = -6 (two's complement in 32-bit)
+5 invert
+// Stack: [8, 14, 6, 20, 5, -6]

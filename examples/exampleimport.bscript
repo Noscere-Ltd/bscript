@@ -1,0 +1,42 @@
+// Bitcoin Script Example: Branching with Multiple Exit Points
+// This script demonstrates conditional logic with different execution paths
+//
+// TIP: Use the "Initial Stack" panel on the left to provide input values!
+// Try entering a number like 42, 75, or 150 to see different execution paths.
+import bitwise from './examples/bitwise.bscript'
+
+// Duplicate the input for multiple tests
+dup dup
+
+bitwise 
+
+// Test 1: Is it greater than 100?
+100 greaterThan
+
+if
+  // Path A: Large number (>100)
+  drop
+  1000  // Return large value indicator
+  verify  // Exit point 1: Must be non-zero to succeed
+else
+  // Continue to next test
+  // Test 2: Is it greater than 50?
+  dup 50 greaterThan
+
+  if
+    // Path B: Medium number (50-100)
+    drop
+    500  // Return medium value indicator
+    verify  // Exit point 2: Must be non-zero to succeed
+  else
+    // Path C: Small number (<=50)
+    drop
+    100  // Return small value indicator
+    verify  // Exit point 3: Must be non-zero to succeed
+  endIf
+endIf
+
+// Different paths based on initial value:
+// - 150 → Path A (>100) → returns 1000
+// - 75  → Path B (50-100) → returns 500
+// - 42  → Path C (<=50) → returns 100

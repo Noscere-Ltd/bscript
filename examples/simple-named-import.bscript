@@ -1,0 +1,25 @@
+// Simple Named Import Example
+// Import an entire file and give it a name
+
+import bitwise from './libs/simple-bitwise.bscript'
+
+// Now "bitwise" can be used multiple times
+// Each occurrence inlines "12 10 and"
+
+bitwise
+// Stack: [8]
+
+verify
+
+bitwise
+// Stack: [8, 8]
+
+verify
+
+bitwise
+// Stack: [8, 8, 8]
+
+verify
+
+// This demonstrates that the imported code executes inline
+// each time the name is referenced

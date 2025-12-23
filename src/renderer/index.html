@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com data:; worker-src 'self' blob:; child-src 'self' blob:;">
+  <title>SVSCRIPT - Bitcoin Script Debugger</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header / Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <h1>SVSCRIPT</h1>
+        <span class="subtitle">Bitcoin Script Debugger</span>
+      </div>
+      <div class="toolbar-right">
+        <button id="btn-run" class="btn btn-primary" title="Run Script (Ctrl/Cmd + Enter)">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M3 2v12l10-6L3 2z"/>
+          </svg>
+          Run
+        </button>
+        <button id="btn-step" class="btn" title="Step (F10)">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 3l6 5-6 5V9H2V7h6V3z"/>
+          </svg>
+          Step
+        </button>
+        <button id="btn-reset" class="btn" title="Reset">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+            <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+          </svg>
+          Reset
+        </button>
+        <button id="btn-help" class="btn" title="Show Help">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+            <path d="M5.255 5.786a.237.237 0 0 0 .241.247h.825c.138 0 .248-.113.266-.25.09-.656.54-1.134 1.342-1.134.686 0 1.314.343 1.314 1.168 0 .635-.374.927-.965 1.371-.673.489-1.206 1.06-1.168 1.987l.003.217a.25.25 0 0 0 .25.246h.811a.25.25 0 0 0 .25-.25v-.105c0-.718.273-.927 1.01-1.486.609-.463 1.244-.977 1.244-2.056 0-1.511-1.276-2.241-2.673-2.241-1.267 0-2.655.59-2.75 2.286zm1.557 5.763c0 .533.425.927 1.01.927.609 0 1.028-.394 1.028-.927 0-.552-.42-.94-1.029-.94-.584 0-1.009.388-1.009.94z"/>
+          </svg>
+          Help
+        </button>
+        <button id="btn-settings" class="btn" title="Settings">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"/>
+            <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319z"/>
+          </svg>
+          Settings
+        </button>
+      </div>
+    </div>
+
+    <!-- Help Panel (Hidden by default) -->
+    <div id="help-panel" class="help-panel" style="display: none;">
+      <div class="help-header">
+        <h2>SVSCRIPT Help</h2>
+        <button id="btn-close-help" class="btn-small">Close</button>
+      </div>
+      <div id="help-content" class="help-content">
+        <!-- Help content will be loaded here -->
+      </div>
+    </div>
+
+    <!-- Settings Panel (Hidden by default) -->
+    <div id="settings-panel" class="settings-panel" style="display: none;">
+      <div class="settings-header">
+        <h2>Settings</h2>
+        <button id="btn-close-settings" class="btn-small">Close</button>
+      </div>
+      <div class="settings-content">
+        <div class="settings-section">
+          <h3>Signature Verification</h3>
+          <p class="settings-description">
+            Enable real cryptographic signature verification for checkSig opcodes.
+            When disabled, signature opcodes always return true (simulated mode).
+          </p>
+          <div class="settings-option">
+            <label class="toggle-switch">
+              <input type="checkbox" id="enable-signatures" />
+              <span class="toggle-slider"></span>
+            </label>
+            <label for="enable-signatures" class="settings-label">
+              Enable Signature Verification
+              <span class="settings-badge settings-badge-experimental">Experimental</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-section" id="network-settings" style="display: none;">
+          <h3>Bitcoin Network</h3>
+          <p class="settings-description">
+            Select the Bitcoin network for signature verification and transaction validation.
+          </p>
+          <div class="settings-option">
+            <label class="radio-option">
+              <input type="radio" name="network" value="mainnet" checked />
+              <span class="radio-label">Mainnet</span>
+              <span class="radio-description">Production network</span>
+            </label>
+          </div>
+          <div class="settings-option">
+            <label class="radio-option">
+              <input type="radio" name="network" value="testnet" />
+              <span class="radio-label">Testnet</span>
+              <span class="radio-description">Testing network</span>
+            </label>
+          </div>
+          <div class="settings-option">
+            <label class="radio-option">
+              <input type="radio" name="network" value="regtest" />
+              <span class="radio-label">Regtest</span>
+              <span class="radio-description">Local regression testing</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-section" id="tx-context-settings" style="display: none;">
+          <h3>Transaction Context</h3>
+          <p class="settings-description">
+            Provide transaction context for checkSig and checkMultiSig verification.
+            checkDataSig does not require transaction context.
+          </p>
+
+          <!-- Context Mode Selector -->
+          <div class="settings-option">
+            <label class="radio-option">
+              <input type="radio" name="tx-context-mode" value="sighash" checked />
+              <span class="radio-label">Pre-computed Sighash</span>
+              <span class="radio-description">Provide 32-byte sighash hex directly (simplest)</span>
+            </label>
+          </div>
+          <div class="settings-option">
+            <label class="radio-option">
+              <input type="radio" name="tx-context-mode" value="transaction" />
+              <span class="radio-label">Full Transaction</span>
+              <span class="radio-description">Provide spending tx and previous output details</span>
+            </label>
+          </div>
+
+          <!-- Sighash Input (shown by default) -->
+          <div id="sighash-input-section" class="tx-context-input-section">
+            <label for="sighash-input" class="settings-input-label">Sighash (64 hex chars)</label>
+            <input type="text" id="sighash-input" class="settings-text-input"
+                   placeholder="e.g., a1b2c3d4e5f6..." maxlength="64" />
+          </div>
+
+          <!-- Transaction Input (hidden by default) -->
+          <div id="transaction-input-section" class="tx-context-input-section" style="display: none;">
+            <label for="tx-hex-input" class="settings-input-label">Spending Transaction (hex)</label>
+            <textarea id="tx-hex-input" class="settings-textarea" rows="3"
+                      placeholder="Raw transaction hex..."></textarea>
+
+            <label for="input-index" class="settings-input-label">Input Index</label>
+            <input type="number" id="input-index" class="settings-number-input"
+                   value="0" min="0" />
+
+            <label for="prev-script-hex" class="settings-input-label">Previous Output Script (hex)</label>
+            <input type="text" id="prev-script-hex" class="settings-text-input"
+                   placeholder="Locking script hex..." />
+
+            <label for="prev-satoshis" class="settings-input-label">Previous Output Satoshis</label>
+            <input type="number" id="prev-satoshis" class="settings-number-input"
+                   value="0" min="0" />
+          </div>
+
+          <div class="tx-context-buttons">
+            <button id="btn-apply-tx-context" class="btn-small">Apply Context</button>
+            <button id="btn-clear-tx-context" class="btn-small">Clear Context</button>
+          </div>
+          <div id="tx-context-status" class="settings-status"></div>
+        </div>
+
+        <div class="settings-footer">
+          <p class="settings-note">
+            <strong>Note:</strong> checkSig/checkMultiSig require transaction context when signature verification is enabled.
+            checkDataSig works with just message, signature, and public key on the stack.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+      <!-- Left Panel: Initial Stack Input -->
+      <div class="panel panel-stack-input">
+        <div class="panel-header">
+          <span class="panel-title">Initial Stack</span>
+          <button id="btn-clear-stack" class="btn-small" title="Clear initial stack">Clear</button>
+        </div>
+        <div class="stack-input-content">
+          <div class="stack-input-info">
+            <p>Define values to push onto the stack before script execution.</p>
+            <p class="help-text">Enter space-separated values (bottom to top).</p>
+          </div>
+          <textarea
+            id="initial-stack-input"
+            class="stack-input-textarea"
+            placeholder="Example: 10 20 30&#10;&#10;(Creates stack with 10 at bottom, 30 at top)"
+            spellcheck="false"
+          >42</textarea>
+          <div class="stack-input-preview">
+            <h4>Preview (Top → Bottom)</h4>
+            <div id="stack-preview" class="stack-preview-list">
+              <div class="stack-empty">No initial values</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center Panel: Editor -->
+      <div class="panel panel-editor">
+        <div class="panel-header">
+          <span class="panel-title">Script Editor</span>
+          <div class="editor-info">
+            <span id="cursor-position">Ln 1, Col 1</span>
+          </div>
+        </div>
+        <div id="editor-container"></div>
+      </div>
+
+      <!-- Right Panel: Stack Visualization & Debug Info -->
+      <div class="panel panel-debug">
+        <div class="panel-header">
+          <span class="panel-title">Debugger</span>
+          <div class="execution-status">
+            <span id="exec-status" class="status-badge status-idle">Idle</span>
+          </div>
+        </div>
+
+        <div class="debug-content">
+          <!-- Stack Visualization -->
+          <div class="stack-section">
+            <h3>Main Stack</h3>
+            <div id="main-stack" class="stack-display">
+              <div class="stack-empty">Empty</div>
+            </div>
+          </div>
+
+          <div class="stack-section">
+            <h3>Alternate Stack</h3>
+            <div id="alt-stack" class="stack-display">
+              <div class="stack-empty">Empty</div>
+            </div>
+          </div>
+
+          <!-- Execution History -->
+          <div class="history-section">
+            <h3>Execution History</h3>
+            <div id="execution-history" class="execution-history">
+              <div class="history-empty">No execution history</div>
+            </div>
+          </div>
+
+          <!-- Execution State -->
+          <div class="state-section">
+            <h3>State</h3>
+            <div id="execution-state" class="execution-state">
+              <div class="state-item">
+                <span class="state-label">Instruction Pointer:</span>
+                <span id="ip-value" class="state-value">-</span>
+              </div>
+              <div class="state-item">
+                <span class="state-label">Total Instructions:</span>
+                <span id="total-instructions" class="state-value">0</span>
+              </div>
+              <div class="state-item">
+                <span class="state-label">Executed:</span>
+                <span id="executed-count" class="state-value">0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Panel: Console / Output -->
+    <div class="console-panel">
+      <div class="console-header">
+        <span class="panel-title">Console Output</span>
+        <button id="btn-clear-console" class="btn-small">Clear</button>
+      </div>
+      <div id="console-output" class="console-output">
+        <div class="console-message console-info">Welcome to SVSCRIPT - Bitcoin Script Debugger</div>
+        <div class="console-message console-info">Write your script using camelCase opcodes (e.g., dup, add, checkSig)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Toast (Hidden by default) -->
+  <div id="error-toast" class="error-toast" style="display: none;">
+    <div class="error-toast-header">
+      <span class="error-toast-icon">⚠️</span>
+      <span class="error-toast-title">Script Error</span>
+      <button id="btn-close-error-toast" class="error-toast-close" title="Dismiss">×</button>
+    </div>
+    <div class="error-toast-content">
+      <div id="error-toast-message"></div>
+      <div id="error-toast-location"></div>
+    </div>
+  </div>
+
+  <!-- Monaco Editor Loader -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+
+  <!-- Load application scripts after Monaco loader is ready -->
+  <script>
+    // Wait for Monaco loader to be available
+    if (typeof require !== 'undefined' && typeof require.config !== 'undefined') {
+      // Loader is ready, load app scripts
+      const script1 = document.createElement('script');
+      script1.src = 'interpreter.js';
+      document.body.appendChild(script1);
+
+      script1.onload = function() {
+        const script2 = document.createElement('script');
+        script2.src = 'syntax.js';
+        document.body.appendChild(script2);
+
+        script2.onload = function() {
+          const script3 = document.createElement('script');
+          script3.src = 'app.js';
+          document.body.appendChild(script3);
+        };
+      };
+    }
+  </script>
+</body>
+</html>

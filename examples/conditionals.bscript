@@ -1,0 +1,43 @@
+// Bitcoin Script Example: Conditional Execution
+// Demonstrates IF/ELSE/ENDIF control flow
+
+// Example 1: Simple IF statement
+100
+dup 50 greaterThan
+
+if
+  1000 add
+else
+  1000 sub
+endIf
+
+// Stack: [1100] because 100 > 50
+
+// Example 2: Nested conditionals
+50
+dup 0 greaterThan
+
+if
+  dup 100 lessThan
+  if
+    // Number is between 0 and 100
+    1 add
+  else
+    // Number is >= 100
+    1 sub
+  endIf
+else
+  // Number is <= 0
+  negate
+endIf
+
+// Stack: [1100, 51] because 50 is between 0 and 100
+
+// Example 3: Using notIf
+0
+notIf
+  // This executes because stack top was 0 (false)
+  999
+endIf
+
+// Stack: [1100, 51, 999]

@@ -1,0 +1,3 @@
+// Simple bitwise operation - entire file is the macro
+// When imported with a name, this entire content becomes that macro
+12 10 and

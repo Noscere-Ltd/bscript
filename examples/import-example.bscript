@@ -1,0 +1,23 @@
+// Bitcoin Script Import Example
+// Demonstrates how to import and reuse code from other .bscript files
+
+// Import all content from common-macros library
+import * from './libs/common-macros.bscript'
+
+// Now we can use the imported code
+// The import statement above is replaced with the entire contents of common-macros.bscript
+
+// Test: Square a number using imported logic
+5 dup mul
+// Stack: [25]
+
+// Verify the result
+verify
+
+// Test: Triple a number
+10
+// Using the triple macro from common-macros.bscript
+dup dup add add
+// Stack: [30]
+
+verify

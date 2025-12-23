@@ -1,0 +1,48 @@
+// Bitcoin Script Macro Examples
+// Demonstrates wallet-side macro expansion to base opcodes
+
+// Example 1: hashCat - duplicates, hashes, and concatenates
+// Expands to: dup sha256 swap cat
+// Result: [x || SHA256(x)]
+"hello" hashCat
+
+// Stack now contains: ["hello", "<hash of hello>hello"]
+
+// Example 2: xSwap_n - swap top with nth item
+// Set up a stack with multiple values
+drop drop  // Clear previous
+1 2 3 4 5
+
+// xSwap_2 swaps top (5) with 2nd from top (3)
+// Stack: [1, 2, 3, 4, 5] -> [1, 2, 5, 4, 3]
+xSwap_2
+
+// Example 3: xDrop_n - drop nth item from stack
+// Stack: [1, 2, 5, 4, 3]
+// xDrop_2 drops 2nd from top (4)
+// Stack: [1, 2, 5, 3]
+xDrop_2
+
+// Example 4: xRot_n - rotate nth item to top
+// Stack: [1, 2, 5, 3]
+// xRot_3 brings 3rd from top (2) to the top
+// Stack: [1, 5, 3, 2]
+xRot_3
+
+// Example 5: LOOP[n]{body} - unroll a loop n times
+// This pushes 0, 1, 2 onto the stack
+LOOP[3]{$i}
+
+// Stack now has: [1, 5, 3, 2, 0, 1, 2]
+
+// LOOP with operations
+drop drop drop drop drop drop drop  // Clear stack
+
+// Push 5 copies of 100
+LOOP[5]{100}
+
+// Stack: [100, 100, 100, 100, 100]
+// Sum them all: 100 + 100 + 100 + 100 + 100 = 500
+add add add add
+
+// Final stack should contain: [500]

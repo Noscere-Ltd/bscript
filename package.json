@@ -1,0 +1,25 @@
+{
+  "name": "svscript",
+  "version": "1.0.0",
+  "description": "Bitcoin Script interpreter and debugger with visual stack inspection",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "unset ELECTRON_RUN_AS_NODE && electron .",
+    "dev": "unset ELECTRON_RUN_AS_NODE && electron . --dev"
+  },
+  "keywords": [
+    "bitcoin",
+    "script",
+    "debugger",
+    "bsv",
+    "interpreter"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^27.3.11"
+  },
+  "dependencies": {
+    "@bsv/sdk": "^1.9.29"
+  }
+}

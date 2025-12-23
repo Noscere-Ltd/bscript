@@ -1,0 +1,37 @@
+// Bitcoin Script Example: Arithmetic Operations
+// This script demonstrates basic arithmetic opcodes
+
+// Simple addition
+5 10 add
+// Stack: [15]
+
+// Duplicate and add to itself
+dup add
+// Stack: [30]
+
+// More complex arithmetic
+100 50 sub
+// Stack: [30, 50]
+
+2 mul
+// Stack: [30, 100]
+
+// Division and modulo
+25 5 div
+// Stack: [30, 100, 5]
+
+20 7 mod
+// Stack: [30, 100, 5, 6]
+
+// Min and max operations
+100 200 max
+// Stack: [30, 100, 5, 6, 200]
+
+50 25 min
+// Stack: [30, 100, 5, 6, 200, 25]
+
+// Within check: is 100 within [50, 150)?
+100 50 150 within
+// Stack: [30, 100, 5, 6, 200, 25, 1]
+
+// Final stack will show all intermediate results

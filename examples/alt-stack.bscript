@@ -1,0 +1,41 @@
+// Bitcoin Script Example: Alternate Stack
+// Demonstrates using the alternate stack for temporary storage
+
+// Push values to main stack
+10 20 30 40 50
+// Main: [10, 20, 30, 40, 50]
+// Alt: []
+
+// Move top 2 values to alt stack
+toAltStack
+// Main: [10, 20, 30, 40]
+// Alt: [50]
+
+toAltStack
+// Main: [10, 20, 30]
+// Alt: [50, 40]
+
+// Perform operations on main stack
+add add
+// Main: [60]
+// Alt: [50, 40]
+
+// Bring values back from alt stack
+fromAltStack
+// Main: [60, 40]
+// Alt: [50]
+
+// Multiply
+mul
+// Main: [2400]
+// Alt: [50]
+
+// Get remaining value from alt stack
+fromAltStack
+// Main: [2400, 50]
+// Alt: []
+
+// Final operation
+add
+// Main: [2450]
+// Alt: []

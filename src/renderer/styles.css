@@ -1047,6 +1047,25 @@ input:disabled + .toggle-slider {
   margin-top: 16px;
 }
 
+/* Chronicle release: Transaction version input */
+.tx-version-input-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.tx-version-input-group .settings-number-input {
+  width: 100px;
+}
+
+.settings-help-text {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
 .settings-status {
   margin-top: 12px;
   padding: 10px 12px;
@@ -1069,4 +1088,199 @@ input:disabled + .toggle-slider {
   background-color: rgba(244, 135, 113, 0.15);
   color: var(--accent-red);
   border: 1px solid var(--accent-red);
+}
+
+/* ==========================================
+   Tools Panel Styles
+   ========================================== */
+
+.tools-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.tools-container {
+  width: 600px;
+  max-width: 90vw;
+  max-height: 85vh;
+  background-color: var(--bg-secondary);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tools-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tools-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tools-content {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.tools-section {
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tools-section:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.tools-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-blue);
+  margin-bottom: 8px;
+}
+
+.tools-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.tools-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.tools-row:last-child {
+  margin-bottom: 0;
+}
+
+.tools-input-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tools-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tools-text-input {
+  width: 100%;
+  padding: 10px 12px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.tools-text-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+}
+
+.tools-text-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.tools-text-input.tools-output {
+  background-color: var(--bg-primary);
+  border-color: var(--accent-green);
+}
+
+.tools-text-input.tools-output:focus {
+  border-color: var(--accent-green);
+  box-shadow: 0 0 0 2px rgba(78, 201, 176, 0.2);
+}
+
+.tools-convert-btn {
+  background-color: var(--accent-blue) !important;
+  color: white !important;
+  padding: 10px 16px !important;
+  border-radius: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tools-convert-btn:hover {
+  background-color: #005a9e !important;
+}
+
+.tools-options {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tools-radio-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  margin-right: 16px;
+}
+
+.tools-radio-option input[type="radio"] {
+  accent-color: var(--accent-blue);
+}
+
+.tools-reference {
+  background-color: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 16px;
+  border: none;
+  margin-top: 8px;
+}
+
+.tools-reference h3 {
+  margin-bottom: 12px;
+  color: var(--accent-yellow);
+}
+
+.tools-reference-content {
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.tools-reference-content p {
+  margin-bottom: 4px;
+}
+
+.tools-reference-content code {
+  background-color: var(--bg-primary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  color: var(--accent-orange);
 }

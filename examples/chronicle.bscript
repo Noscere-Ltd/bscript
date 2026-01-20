@@ -1,0 +1,126 @@
+// Chronicle Release Opcodes Demo
+// This script demonstrates the new opcodes introduced in the Chronicle release.
+//
+// To test version-dependent behavior, go to Settings and set Transaction Version.
+// Version 1: Standard rules (default)
+// Version 2+: Chronicle rules (relaxed malleability restrictions)
+//
+// NOTE: String data in Bitcoin Script is represented as hex values.
+// Use the Tools panel (Tools button in toolbar) to convert text to hex.
+
+// =====================================================
+// 1. Transaction Version Opcode (ver)
+// =====================================================
+// Push the current transaction version onto the stack
+
+ver
+dup
+// Stack now has: [version, version]
+
+// =====================================================
+// 2. Version-based Conditional (verIf)
+// =====================================================
+// Execute block if transaction version >= comparison value
+
+2 verIf
+  // This block executes if version >= 2 (Chronicle mode)
+  drop  // Drop duplicate version
+  1     // Push 1 to indicate Chronicle mode
+else
+  // This block executes if version < 2 (Standard mode)
+  drop  // Drop duplicate version
+  0     // Push 0 to indicate Standard mode
+endIf
+
+// Store the mode indicator
+toAltStack
+
+// =====================================================
+// 3. String Operations: subStr, left, right
+// =====================================================
+// NOTE: All string data is hex-encoded
+
+// "BSV Blockchain" = 42535620426c6f636b636861696e (hex)
+// subStr - Extract substring by start index and length
+// Stack: [string, start_index, length] -> [substring]
+42535620426c6f636b636861696e 8 10 subStr
+// Result: 426c6f636b ("Block" - hex chars at positions 8-17)
+
+// Verify we got "Block" (426c6f636b)
+426c6f636b equal verify
+
+// "Bitcoin" = 426974636f696e (hex)
+// left - Get leftmost n characters
+426974636f696e 6 left
+// Result: 426974 ("Bit" = 6 hex chars)
+// Note: 426974 is all digits, so use 0x prefix to force hex interpretation
+0x426974 equal verify
+
+// right - Get rightmost n characters
+426974636f696e 8 right
+// Result: 636f696e ("coin" = 8 hex chars)
+636f696e equal verify
+
+// =====================================================
+// 4. Arithmetic: 2mul, 2div
+// =====================================================
+
+// 2mul - Multiply by 2
+10 2mul
+// Result: 20
+20 equal verify
+
+// 2div - Divide by 2 (floor division)
+15 2div
+// Result: 7 (floor of 7.5)
+7 equal verify
+
+// =====================================================
+// 5. Numerical Shift: lShiftNum, rShiftNum
+// =====================================================
+// These preserve sign, unlike bitwise lShift/rShift
+
+// lShiftNum - Left shift preserving sign
+8 2 lShiftNum
+// Result: 32 (8 << 2 = 8 * 4)
+32 equal verify
+
+// rShiftNum - Right shift preserving sign
+32 3 rShiftNum
+// Result: 4 (32 >> 3 = 32 / 8)
+4 equal verify
+
+// Test sign preservation with negative numbers
+-16 1 rShiftNum
+// Result: -8 (sign preserved)
+-8 equal verify
+
+// =====================================================
+// 6. verNotIf Example
+// =====================================================
+// Execute block if transaction version < comparison value
+
+ver
+2 verNotIf
+  // This executes if version < 2 (NOT Chronicle)
+  1  // Standard mode indicator
+else
+  // This executes if version >= 2 (Chronicle mode)
+  2  // Chronicle mode indicator
+endIf
+
+// Clean up and verify
+drop
+
+// Retrieve mode indicator from alt stack
+fromAltStack
+
+// =====================================================
+// Final Result
+// =====================================================
+// Stack should contain: mode indicator (0 for standard, 1 for Chronicle)
+// The script completes successfully if all verifications pass
+
+// Verify we have a valid result
+dup 0notEqual
+// Success! Script execution complete.

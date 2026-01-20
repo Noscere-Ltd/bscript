@@ -13,7 +13,8 @@ let errorLineDecoration = []; // Track error line decoration
 // Settings
 let settings = {
   enableSignatures: false,
-  network: 'mainnet'
+  network: 'mainnet',
+  transactionVersion: 1  // Chronicle release: default version 1
 };
 
 // Initialize Monaco Editor
@@ -140,11 +141,24 @@ function setupEventHandlers() {
   document.getElementById('btn-close-settings').addEventListener('click', hideSettings);
   document.getElementById('btn-close-error-toast').addEventListener('click', hideErrorToast);
 
+  // Tools panel event listeners
+  document.getElementById('btn-tools').addEventListener('click', showTools);
+  document.getElementById('btn-close-tools').addEventListener('click', hideTools);
+  document.getElementById('btn-text-to-hex').addEventListener('click', convertTextToHex);
+  document.getElementById('btn-hex-to-text').addEventListener('click', convertHexToText);
+  document.getElementById('btn-calc-sha256').addEventListener('click', calculateSha256);
+  document.getElementById('btn-copy-hex').addEventListener('click', () => copyToClipboard('text-to-hex-output'));
+  document.getElementById('btn-copy-text').addEventListener('click', () => copyToClipboard('hex-to-text-output'));
+  document.getElementById('btn-copy-sha256').addEventListener('click', () => copyToClipboard('sha256-output'));
+
   // Settings event listeners
   document.getElementById('enable-signatures').addEventListener('change', toggleSignatures);
   document.querySelectorAll('input[name="network"]').forEach(radio => {
     radio.addEventListener('change', changeNetwork);
   });
+
+  // Chronicle release: Transaction version event listener
+  document.getElementById('btn-apply-tx-version').addEventListener('click', applyTransactionVersion);
 
   // Transaction context event listeners
   document.querySelectorAll('input[name="tx-context-mode"]').forEach(radio => {
@@ -759,6 +773,42 @@ function changeNetwork(event) {
   logToConsole(`Network changed to: ${settings.network}`, 'info');
 }
 
+// Chronicle release: Transaction version functions
+function applyTransactionVersion() {
+  const versionInput = document.getElementById('tx-version');
+  const statusEl = document.getElementById('tx-version-status');
+  const version = parseInt(versionInput.value);
+
+  if (isNaN(version) || version < 1) {
+    showTxVersionStatus('Invalid version. Must be a positive integer.', 'error');
+    return;
+  }
+
+  settings.transactionVersion = version;
+
+  // Update interpreter settings
+  if (interpreter) {
+    interpreter.transactionVersion = version;
+  }
+
+  const versionType = version > 1 ? 'Chronicle rules (relaxed malleability)' : 'Standard rules';
+  showTxVersionStatus(`Transaction version set to ${version}`, 'success');
+  logToConsole(`Transaction version changed to ${version} - ${versionType}`, 'info');
+}
+
+function showTxVersionStatus(message, type) {
+  const statusEl = document.getElementById('tx-version-status');
+  statusEl.textContent = message;
+  statusEl.className = `settings-status visible ${type}`;
+
+  // Auto-hide success messages after 3 seconds
+  if (type === 'success') {
+    setTimeout(() => {
+      statusEl.className = 'settings-status';
+    }, 3000);
+  }
+}
+
 // Transaction context functions
 function toggleTxContextMode(event) {
   const mode = event.target.value;
@@ -938,6 +988,163 @@ function highlightErrorLine(lineNumber) {
 
 function clearErrorHighlight() {
   errorLineDecoration = editor.deltaDecorations(errorLineDecoration, []);
+}
+
+// ==========================================
+// Tools Panel Functions
+// ==========================================
+
+function showTools() {
+  document.getElementById('tools-panel').style.display = 'flex';
+}
+
+function hideTools() {
+  document.getElementById('tools-panel').style.display = 'none';
+}
+
+// Convert text to hexadecimal
+function convertTextToHex() {
+  const input = document.getElementById('text-to-hex-input').value;
+  const output = document.getElementById('text-to-hex-output');
+
+  if (!input) {
+    output.value = '';
+    return;
+  }
+
+  let hex = '';
+  for (let i = 0; i < input.length; i++) {
+    hex += input.charCodeAt(i).toString(16).padStart(2, '0');
+  }
+
+  output.value = hex;
+  logToConsole(`Converted "${input}" to ${hex}`, 'info');
+}
+
+// Convert hexadecimal to text
+function convertHexToText() {
+  const input = document.getElementById('hex-to-text-input').value.trim();
+  const output = document.getElementById('hex-to-text-output');
+
+  if (!input) {
+    output.value = '';
+    return;
+  }
+
+  // Remove 0x prefix if present
+  let hex = input;
+  if (hex.toLowerCase().startsWith('0x')) {
+    hex = hex.slice(2);
+  }
+
+  // Validate hex string
+  if (!/^[0-9a-fA-F]*$/.test(hex)) {
+    output.value = 'Error: Invalid hex characters';
+    logToConsole('Hex to text conversion failed: invalid hex characters', 'error');
+    return;
+  }
+
+  if (hex.length % 2 !== 0) {
+    output.value = 'Error: Odd number of hex digits';
+    logToConsole('Hex to text conversion failed: odd number of hex digits', 'error');
+    return;
+  }
+
+  let text = '';
+  for (let i = 0; i < hex.length; i += 2) {
+    const charCode = parseInt(hex.substr(i, 2), 16);
+    text += String.fromCharCode(charCode);
+  }
+
+  output.value = text;
+  logToConsole(`Converted ${input} to "${text}"`, 'info');
+}
+
+// Calculate SHA256 hash
+async function calculateSha256() {
+  const input = document.getElementById('sha256-input').value;
+  const output = document.getElementById('sha256-output');
+  const mode = document.querySelector('input[name="sha256-mode"]:checked').value;
+
+  if (!input) {
+    output.value = '';
+    return;
+  }
+
+  try {
+    let dataToHash;
+
+    if (mode === 'hex') {
+      // Treat input as hex - remove 0x prefix if present
+      let hex = input.trim();
+      if (hex.toLowerCase().startsWith('0x')) {
+        hex = hex.slice(2);
+      }
+
+      // Validate hex
+      if (!/^[0-9a-fA-F]*$/.test(hex)) {
+        output.value = 'Error: Invalid hex characters';
+        logToConsole('SHA256 calculation failed: invalid hex characters', 'error');
+        return;
+      }
+
+      if (hex.length % 2 !== 0) {
+        output.value = 'Error: Odd number of hex digits';
+        logToConsole('SHA256 calculation failed: odd number of hex digits', 'error');
+        return;
+      }
+
+      // Convert hex to Uint8Array
+      const bytes = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < hex.length; i += 2) {
+        bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+      }
+      dataToHash = bytes;
+    } else {
+      // Treat input as text - encode as UTF-8
+      const encoder = new TextEncoder();
+      dataToHash = encoder.encode(input);
+    }
+
+    // Use Web Crypto API to calculate SHA256
+    const hashBuffer = await crypto.subtle.digest('SHA-256', dataToHash);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+    output.value = hashHex;
+    logToConsole(`SHA256 (${mode}): ${hashHex}`, 'info');
+  } catch (error) {
+    output.value = 'Error: ' + error.message;
+    logToConsole(`SHA256 calculation failed: ${error.message}`, 'error');
+  }
+}
+
+// Copy to clipboard
+async function copyToClipboard(elementId) {
+  const element = document.getElementById(elementId);
+  const text = element.value;
+
+  if (!text) {
+    logToConsole('Nothing to copy', 'warning');
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(text);
+    logToConsole('Copied to clipboard', 'success');
+
+    // Visual feedback - briefly change button text
+    const btn = element.parentElement.querySelector('button[id^="btn-copy"]');
+    if (btn) {
+      const originalText = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => {
+        btn.textContent = originalText;
+      }, 1000);
+    }
+  } catch (error) {
+    logToConsole('Failed to copy to clipboard', 'error');
+  }
 }
 
 // Add CSS for line highlighting

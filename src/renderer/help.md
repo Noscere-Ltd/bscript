@@ -97,6 +97,58 @@ LOOP[5]{100 add}  // Expands to: 100 add 100 add 100 add 100 add 100 add
 LOOP[3]{$i}  // Expands to: 0 1 2
 ```
 
+## Chronicle Release (New Opcodes)
+
+The Chronicle release restores several original Bitcoin opcodes and adds new functionality.
+
+### Transaction Version Opcodes
+- **ver** - Push transaction version onto stack
+- **verIf** - Version-based conditional (executes if `ver >= tos`)
+- **verNotIf** - Inverted version conditional (executes if `ver < tos`)
+
+```javascript
+// Example: Check if Chronicle rules apply (version >= 2)
+2 verIf
+  // Chronicle rules path
+else
+  // Standard rules path
+endIf
+```
+
+### String Operations (Chronicle)
+- **subStr** - Extract substring by start index and length
+- **left** - Get leftmost n characters
+- **right** - Get rightmost n characters
+
+```javascript
+"BSV Blockchain" 4 5 subStr  // Returns "Block"
+"BSV Blockchain" 3 left      // Returns "BSV"
+"BSV Blockchain" 5 right     // Returns "chain"
+```
+
+### Arithmetic (Chronicle)
+- **2mul** - Multiply by 2
+- **2div** - Divide by 2 (floor division)
+
+```javascript
+10 2mul  // Returns 20
+15 2div  // Returns 7
+```
+
+### Numerical Shift Operations (Chronicle)
+- **lShiftNum** - Left shift preserving sign
+- **rShiftNum** - Right shift preserving sign
+
+```javascript
+8 2 lShiftNum   // Returns 32 (8 << 2)
+-16 2 rShiftNum // Returns -4 (-16 >> 2, sign preserved)
+```
+
+### Transaction Version Settings
+Set the transaction version in **Settings** to test Chronicle-specific behavior:
+- **Version 1**: Standard Bitcoin Script rules
+- **Version 2+**: Chronicle rules with relaxed malleability restrictions
+
 ## Opcode Categories
 
 ### Stack Manipulation
@@ -197,6 +249,7 @@ Example scripts are available in the `examples/` directory:
 - `import-example.bscript` - Wildcard imports
 - `named-import-example.bscript` - Named imports
 - `macros.bscript` - Built-in macro usage
+- `chronicle.bscript` - Chronicle release opcodes
 
 ## Notes
 
@@ -205,3 +258,5 @@ Example scripts are available in the `examples/` directory:
 - No dynamic looping - use compile-time `LOOP` macro
 - Import paths are relative to current file
 - Named imports behave like inline macro expansion
+- **Chronicle release**: Set transaction version > 1 in Settings for relaxed malleability rules
+- **ver** opcode returns the transaction version set in Settings (default: 1)

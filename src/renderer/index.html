@@ -35,6 +35,12 @@
           </svg>
           Reset
         </button>
+        <button id="btn-tools" class="btn" title="Conversion Tools">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M1 0L0 1l2.2 3.081a1 1 0 0 0 .815.419h.07a1 1 0 0 1 .708.293l2.675 2.675-2.617 2.654A3.003 3.003 0 0 0 0 13a3 3 0 1 0 5.878-.851l2.654-2.617.968.968-.305.914a1 1 0 0 0 .242 1.023l3.356 3.356a1 1 0 0 0 1.414 0l1.586-1.586a1 1 0 0 0 0-1.414l-3.356-3.356a1 1 0 0 0-1.023-.242l-.914.305-.968-.968 5.965-5.965a2.5 2.5 0 0 0-3.536-3.536L6.354 3.383l-.707-.707a1 1 0 0 1-.293-.708v-.07a1 1 0 0 0-.419-.815L1 0zm9.354 9.354l4.586 4.586-.707.707-4.586-4.586.707-.707zM3 13a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>
+          </svg>
+          Tools
+        </button>
         <button id="btn-help" class="btn" title="Show Help">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
@@ -70,6 +76,27 @@
         <button id="btn-close-settings" class="btn-small">Close</button>
       </div>
       <div class="settings-content">
+        <div class="settings-section">
+          <h3>Chronicle Release Settings</h3>
+          <p class="settings-description">
+            Configure transaction version for Chronicle release opcodes.
+            Version &gt; 1 enables relaxed malleability rules.
+          </p>
+          <div class="settings-option">
+            <label for="tx-version" class="settings-input-label">Transaction Version</label>
+            <div class="tx-version-input-group">
+              <input type="number" id="tx-version" class="settings-number-input"
+                     value="1" min="1" max="2147483647" />
+              <button id="btn-apply-tx-version" class="btn-small">Apply</button>
+            </div>
+            <p class="settings-help-text">
+              Version 1: Standard rules (default)<br>
+              Version 2+: Chronicle rules (relaxed malleability restrictions)
+            </p>
+          </div>
+          <div id="tx-version-status" class="settings-status"></div>
+        </div>
+
         <div class="settings-section">
           <h3>Signature Verification</h3>
           <p class="settings-description">
@@ -177,6 +204,97 @@
             <strong>Note:</strong> checkSig/checkMultiSig require transaction context when signature verification is enabled.
             checkDataSig works with just message, signature, and public key on the stack.
           </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tools Panel (Hidden by default) -->
+    <div id="tools-panel" class="tools-panel" style="display: none;">
+      <div class="tools-container">
+        <div class="tools-header">
+          <h2>Conversion Tools</h2>
+          <button id="btn-close-tools" class="btn-small">Close</button>
+        </div>
+        <div class="tools-content">
+        <!-- Text to Hex Converter -->
+        <div class="tools-section">
+          <h3>Text to Hex</h3>
+          <p class="tools-description">Convert text/ASCII to hexadecimal for use in Bitcoin Script.</p>
+          <div class="tools-row">
+            <div class="tools-input-group">
+              <label for="text-to-hex-input" class="tools-label">Text Input</label>
+              <input type="text" id="text-to-hex-input" class="tools-text-input" placeholder="Enter text (e.g., Hello World)" />
+            </div>
+            <button id="btn-text-to-hex" class="btn-small tools-convert-btn">Convert</button>
+          </div>
+          <div class="tools-row">
+            <div class="tools-input-group">
+              <label for="text-to-hex-output" class="tools-label">Hex Output</label>
+              <input type="text" id="text-to-hex-output" class="tools-text-input tools-output" readonly placeholder="48656c6c6f..." />
+            </div>
+            <button id="btn-copy-hex" class="btn-small" title="Copy to clipboard">Copy</button>
+          </div>
+        </div>
+
+        <!-- Hex to Text Converter -->
+        <div class="tools-section">
+          <h3>Hex to Text</h3>
+          <p class="tools-description">Convert hexadecimal back to readable text.</p>
+          <div class="tools-row">
+            <div class="tools-input-group">
+              <label for="hex-to-text-input" class="tools-label">Hex Input</label>
+              <input type="text" id="hex-to-text-input" class="tools-text-input" placeholder="Enter hex (e.g., 48656c6c6f)" />
+            </div>
+            <button id="btn-hex-to-text" class="btn-small tools-convert-btn">Convert</button>
+          </div>
+          <div class="tools-row">
+            <div class="tools-input-group">
+              <label for="hex-to-text-output" class="tools-label">Text Output</label>
+              <input type="text" id="hex-to-text-output" class="tools-text-input tools-output" readonly placeholder="Decoded text..." />
+            </div>
+            <button id="btn-copy-text" class="btn-small" title="Copy to clipboard">Copy</button>
+          </div>
+        </div>
+
+        <!-- SHA256 Calculator -->
+        <div class="tools-section">
+          <h3>SHA256 Calculator</h3>
+          <p class="tools-description">Calculate SHA256 hash of text or hex data.</p>
+          <div class="tools-row">
+            <div class="tools-input-group">
+              <label for="sha256-input" class="tools-label">Input</label>
+              <input type="text" id="sha256-input" class="tools-text-input" placeholder="Enter text or hex data" />
+            </div>
+          </div>
+          <div class="tools-row tools-options">
+            <label class="tools-radio-option">
+              <input type="radio" name="sha256-mode" value="text" checked />
+              <span>Treat as Text</span>
+            </label>
+            <label class="tools-radio-option">
+              <input type="radio" name="sha256-mode" value="hex" />
+              <span>Treat as Hex</span>
+            </label>
+            <button id="btn-calc-sha256" class="btn-small tools-convert-btn">Calculate</button>
+          </div>
+          <div class="tools-row">
+            <div class="tools-input-group">
+              <label for="sha256-output" class="tools-label">SHA256 Hash (hex)</label>
+              <input type="text" id="sha256-output" class="tools-text-input tools-output" readonly placeholder="64-character hash..." />
+            </div>
+            <button id="btn-copy-sha256" class="btn-small" title="Copy to clipboard">Copy</button>
+          </div>
+        </div>
+
+        <!-- Quick Reference -->
+        <div class="tools-section tools-reference">
+          <h3>Quick Reference</h3>
+          <div class="tools-reference-content">
+            <p><strong>Hex literals:</strong> Must contain at least one letter (a-f)</p>
+            <p><strong>Example:</strong> <code>48656c6c6f</code> = "Hello"</p>
+            <p><strong>All-digit hex:</strong> Use <code>0x</code> prefix (e.g., <code>0x426974</code>)</p>
+          </div>
+        </div>
         </div>
       </div>
     </div>

@@ -26,6 +26,10 @@ class ScriptInterpreter {
     if (!this.enableSignatures) this.enableSignatures = false;
     if (!this.network) this.network = 'mainnet';
 
+    // Chronicle release: Transaction version (preserved across resets)
+    // Version > 1 enables relaxed malleability rules
+    if (this.transactionVersion === undefined) this.transactionVersion = 1;
+
     // Transaction context for signature verification (preserved across resets)
     if (!this.txContext) this.txContext = null;
     if (!this.txContextMode) this.txContextMode = null;
@@ -339,7 +343,7 @@ class ScriptInterpreter {
         this.mainStack.push(value);
         this.addHistory(instruction, `Push ${value}`);
       } else if (this.isHexLiteral(instruction)) {
-        // Hex literal (0x...)
+        // Hex literal
         const bytes = this.parseHex(instruction);
         this.mainStack.push(bytes);
         this.addHistory(instruction, `Push ${instruction}`);
@@ -380,9 +384,10 @@ class ScriptInterpreter {
     return /^-?\d+$/.test(token);
   }
 
-  // Check if token is hex literal
+  // Check if token is hex literal (must contain at least one hex letter a-f/A-F)
   isHexLiteral(token) {
-    return /^0x[0-9a-fA-F]+$/.test(token);
+    // Pure digits are decimal numbers, hex must contain at least one letter
+    return /^[0-9a-fA-F]*[a-fA-F][0-9a-fA-F]*$/.test(token);
   }
 
   // Parse number
@@ -488,6 +493,18 @@ class ScriptInterpreter {
       'checkMultiSigVerify': async () => await this.op_checkmultisigverify(),
       'checkDataSig': async () => await this.op_checkdatasig(),
       'checkDataSigVerify': async () => await this.op_checkdatasigverify(),
+
+      // Chronicle Release Opcodes
+      'ver': () => this.op_ver(),
+      'verIf': () => this.op_verif(),
+      'verNotIf': () => this.op_vernotif(),
+      'subStr': () => this.op_substr(),
+      'left': () => this.op_left(),
+      'right': () => this.op_right(),
+      '2mul': () => this.op_2mul(),
+      '2div': () => this.op_2div(),
+      'lShiftNum': () => this.op_lshiftnum(),
+      'rShiftNum': () => this.op_rshiftnum(),
     };
 
     const opcodeFunc = opcodeMap[opcode];
@@ -1209,6 +1226,184 @@ class ScriptInterpreter {
   async op_checkdatasigverify() {
     await this.op_checkdatasig();
     this.op_verify();
+  }
+
+  // ==========================================
+  // Chronicle Release Opcodes
+  // ==========================================
+
+  // OP_VER (0x62) - Push transaction version onto stack
+  op_ver() {
+    this.pushStack(this.transactionVersion);
+    this.addHistory('ver', `Push transaction version: ${this.transactionVersion}`);
+  }
+
+  // OP_VERIF (0x65) - Version-based conditional IF
+  // Compares tos with transaction version (ver >= tos)
+  // Logically equivalent to: OP_VER OP_GREATERTHANOREQUAL OP_IF
+  op_verif() {
+    const comparisonValue = this.toNumber(this.popStack());
+    const condition = this.transactionVersion >= comparisonValue;
+    this.addHistory('verIf', `Version conditional: ${this.transactionVersion} >= ${comparisonValue} = ${condition}`);
+
+    if (condition) {
+      // Condition is true, execute if-block and set flag to skip else-block
+      this.skipElse = true;
+    } else {
+      // Condition is false, skip to ELSE or ENDIF
+      let depth = 1;
+      while (this.ip < this.instructions.length && depth > 0) {
+        this.ip++;
+        const inst = this.instructions[this.ip];
+        if (inst === 'if' || inst === 'notIf' || inst === 'verIf' || inst === 'verNotIf') depth++;
+        else if (inst === 'endIf') depth--;
+        else if (inst === 'else' && depth === 1) break;
+      }
+      this.skipIPIncrement = true;
+      this.skipElse = false;
+    }
+  }
+
+  // OP_VERNOTIF (0x66) - Version-based conditional NOTIF
+  // Compares tos with transaction version (ver >= tos), then inverts
+  // Logically equivalent to: OP_VER OP_GREATERTHANOREQUAL OP_NOTIF
+  op_vernotif() {
+    const comparisonValue = this.toNumber(this.popStack());
+    const condition = !(this.transactionVersion >= comparisonValue);
+    this.addHistory('verNotIf', `Version conditional (inverted): NOT(${this.transactionVersion} >= ${comparisonValue}) = ${condition}`);
+
+    if (condition) {
+      // Condition is true (inverted), execute if-block and set flag to skip else-block
+      this.skipElse = true;
+    } else {
+      // Condition is false (inverted), skip to ELSE or ENDIF
+      let depth = 1;
+      while (this.ip < this.instructions.length && depth > 0) {
+        this.ip++;
+        const inst = this.instructions[this.ip];
+        if (inst === 'if' || inst === 'notIf' || inst === 'verIf' || inst === 'verNotIf') depth++;
+        else if (inst === 'endIf') depth--;
+        else if (inst === 'else' && depth === 1) break;
+      }
+      this.skipIPIncrement = true;
+      this.skipElse = false;
+    }
+  }
+
+  // OP_SUBSTR (0xb3) - Return substring defined by start index and length
+  // Stack: [string, start_index, length] -> [substring]
+  op_substr() {
+    const length = this.toNumber(this.popStack());
+    const startIndex = this.toNumber(this.popStack());
+    const str = String(this.popStack());
+
+    // Error checking per Chronicle spec
+    if (str.length === 0) {
+      throw new Error('subStr: zero-length source string');
+    }
+    if (length < 0) {
+      throw new Error('subStr: negative length');
+    }
+    if (startIndex + length > str.length) {
+      throw new Error(`subStr: specified length (${length}) exceeds source string from index ${startIndex}`);
+    }
+    if (startIndex < 0) {
+      throw new Error('subStr: negative start index');
+    }
+
+    const result = str.substring(startIndex, startIndex + length);
+    this.pushStack(result);
+    this.addHistory('subStr', `Substring [${startIndex}, ${startIndex + length}): "${result}"`);
+  }
+
+  // OP_LEFT (0xb4) - Produces substring of leftmost characters
+  // Stack: [string, size] -> [left_substring]
+  op_left() {
+    const size = this.toNumber(this.popStack());
+    const str = String(this.popStack());
+
+    if (size < 0) {
+      throw new Error('left: negative size');
+    }
+    if (size > str.length) {
+      throw new Error(`left: size (${size}) exceeds string length (${str.length})`);
+    }
+
+    const result = str.substring(0, size);
+    this.pushStack(result);
+    this.addHistory('left', `Left ${size} chars: "${result}"`);
+  }
+
+  // OP_RIGHT (0xb5) - Produces substring of rightmost characters
+  // Stack: [string, size] -> [right_substring]
+  op_right() {
+    const size = this.toNumber(this.popStack());
+    const str = String(this.popStack());
+
+    if (size < 0) {
+      throw new Error('right: negative size');
+    }
+    if (size > str.length) {
+      throw new Error(`right: size (${size}) exceeds string length (${str.length})`);
+    }
+
+    const result = str.substring(str.length - size);
+    this.pushStack(result);
+    this.addHistory('right', `Right ${size} chars: "${result}"`);
+  }
+
+  // OP_2MUL (0x8d) - Multiply top of stack by 2
+  op_2mul() {
+    const a = this.toNumber(this.popStack());
+    const result = a * 2;
+    this.pushStack(result);
+    this.addHistory('2mul', `${a} * 2 = ${result}`);
+  }
+
+  // OP_2DIV (0x8e) - Divide top of stack by 2
+  op_2div() {
+    const a = this.toNumber(this.popStack());
+    const result = Math.floor(a / 2);
+    this.pushStack(result);
+    this.addHistory('2div', `${a} / 2 = ${result}`);
+  }
+
+  // OP_LSHIFTNUM (0xb6) - Numerical left shift, preserving sign
+  // Stack: [a, b] -> [a << b] (sign preserved)
+  op_lshiftnum() {
+    const b = this.toNumber(this.popStack());
+    const a = this.toNumber(this.popStack());
+
+    if (b < 0) {
+      throw new Error('lShiftNum: negative shift amount');
+    }
+
+    // Preserve sign for numerical shift
+    const sign = a < 0 ? -1 : 1;
+    const absResult = Math.abs(a) << b;
+    const result = sign * absResult;
+
+    this.pushStack(result);
+    this.addHistory('lShiftNum', `${a} <<n ${b} = ${result} (sign preserved)`);
+  }
+
+  // OP_RSHIFTNUM (0xb7) - Numerical right shift, preserving sign
+  // Stack: [a, b] -> [a >> b] (sign preserved)
+  op_rshiftnum() {
+    const b = this.toNumber(this.popStack());
+    const a = this.toNumber(this.popStack());
+
+    if (b < 0) {
+      throw new Error('rShiftNum: negative shift amount');
+    }
+
+    // Preserve sign for numerical shift
+    const sign = a < 0 ? -1 : 1;
+    const absResult = Math.abs(a) >> b;
+    const result = sign * absResult;
+
+    this.pushStack(result);
+    this.addHistory('rShiftNum', `${a} >>n ${b} = ${result} (sign preserved)`);
   }
 }
 

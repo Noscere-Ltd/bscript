@@ -23,9 +23,11 @@ const bitcoinScriptLanguageDef = {
     // Arithmetic
     'add', 'sub', 'mul', 'div', 'mod', 'negate', 'abs', 'not',
     '0notEqual', '1add', '1sub', 'min', 'max', 'within',
+    '2mul', '2div',  // Chronicle release
 
     // Bitwise logic
     'and', 'or', 'xor', 'invert', 'lShift', 'rShift',
+    'lShiftNum', 'rShiftNum',  // Chronicle release (sign-preserving)
 
     // Comparison
     'equal', 'equalVerify', 'lessThan', 'greaterThan',
@@ -34,15 +36,18 @@ const bitcoinScriptLanguageDef = {
 
     // String operations (BSV)
     'cat', 'split', 'num2bin', 'bin2num', 'size',
+    'subStr', 'left', 'right',  // Chronicle release
 
     // Crypto
     'ripemd160', 'sha1', 'sha256', 'hash160', 'hash256',
     'checkSig', 'checkSigVerify', 'checkMultiSig', 'checkMultiSigVerify',
     'checkDataSig', 'checkDataSigVerify',
 
-    // Additional opcodes
-    'codeseparator', 'reserved', 'ver', 'verif', 'vernotif',
-    'reserved1', 'reserved2',
+    // Chronicle release - Version opcodes
+    'ver', 'verIf', 'verNotIf',
+
+    // Additional opcodes (reserved)
+    'codeseparator', 'reserved', 'reserved1', 'reserved2',
 
     // Macros
     'hashCat', 'LOOP',
@@ -88,6 +93,8 @@ const bitcoinScriptLanguageDef = {
       [/(@digits)[eE]([\-+]?(@digits))?/, 'number.float'],
       [/(@digits)\.(@digits)([eE][\-+]?(@digits))?/, 'number.float'],
       [/0[xX](@hexdigits)/, 'number.hex'],
+      // Hex without 0x prefix (must contain at least one letter a-f/A-F)
+      [/[0-9]*[a-fA-F][0-9a-fA-F]*/, 'number.hex'],
       [/0[oO]?(@octaldigits)/, 'number.octal'],
       [/0[bB](@binarydigits)/, 'number.binary'],
       [/(@digits)/, 'number'],

@@ -1,0 +1,35 @@
+// Covenant Example: Time-Locked Withdrawal
+//
+// This contract enforces that the spending transaction must have a
+// locktime >= 1000 (block height). The preimage is verified via
+// OP_PUSH_TX, then the locktime field is extracted and checked.
+//
+// Initial stack (bottom to top):
+//   <k=1 signature>
+//   <preimage>
+//
+// In simulated mode, set initial stack to:
+//   0xdeadbeef 0x02000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001ab0000000000000000e803000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbe803000041000000
+//   (This is a fake preimage with locktime = 1000 at the correct offset)
+
+// Verify the preimage is authentic
+// (In simulated mode, checkSigVerify auto-succeeds)
+checkPreimage
+
+// Extract locktime from the verified preimage
+dup
+extractLocktime
+
+// Check that locktime >= 1000 (block height ~1000)
+1000 greaterThanOrEqual
+verify
+
+// Extract the amount to ensure minimum value
+extractAmount
+
+// Ensure at least 10000 satoshis locked
+10000 greaterThanOrEqual
+verify
+
+// Contract passes
+true

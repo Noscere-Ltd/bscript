@@ -123,6 +123,23 @@ function createMenu(mainWindow) {
       ]
     },
 
+    // Tools menu
+    {
+      label: 'Tools',
+      submenu: [
+        {
+          label: 'Verify with ScriptVM',
+          accelerator: 'CommandOrControl+Shift+V',
+          click: () => mainWindow.webContents.send('menu-verify-script')
+        },
+        { type: 'separator' },
+        {
+          label: 'Deploy Script...',
+          click: () => mainWindow.webContents.send('menu-deploy-script')
+        }
+      ]
+    },
+
     // Help menu
     {
       label: 'Help',

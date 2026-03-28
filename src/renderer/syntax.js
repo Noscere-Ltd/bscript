@@ -46,6 +46,11 @@ const bitcoinScriptLanguageDef = {
 
     // Macros
     'hashCat', 'LOOP',
+    'checkPreimage', 'codeSeparator',
+    'extractVersion', 'extractHashPrevouts', 'extractHashSequence',
+    'extractOutpoint', 'extractInputIndex',
+    'extractAmount', 'extractSequence', 'extractOutputHash',
+    'extractLocktime', 'extractSigHashType',
 
     // Import system
     'import', 'from',

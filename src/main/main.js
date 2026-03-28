@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
+const https = require('https');
 const { createMenu } = require('./menu');
 
 // Lazy load BSV SDK modules when needed (loaded on first use)
@@ -217,31 +218,31 @@ ipcMain.handle('read-import-file', async (event, filePath) => {
 ipcMain.handle('bsv-sha256', async (event, data) => {
   const { Hash } = getBsvSdk();
   const buffer = Buffer.from(data, 'utf8');
-  return Hash.sha256(buffer).toString('hex');
+  return Buffer.from(Hash.sha256(buffer)).toString('hex');
 });
 
 ipcMain.handle('bsv-sha1', async (event, data) => {
   const { Hash } = getBsvSdk();
   const buffer = Buffer.from(data, 'utf8');
-  return Hash.sha1(buffer).toString('hex');
+  return Buffer.from(Hash.sha1(buffer)).toString('hex');
 });
 
 ipcMain.handle('bsv-ripemd160', async (event, data) => {
   const { Hash } = getBsvSdk();
   const buffer = Buffer.from(data, 'utf8');
-  return Hash.ripemd160(buffer).toString('hex');
+  return Buffer.from(Hash.ripemd160(buffer)).toString('hex');
 });
 
 ipcMain.handle('bsv-hash256', async (event, data) => {
   const { Hash } = getBsvSdk();
   const buffer = Buffer.from(data, 'utf8');
-  return Hash.hash256(buffer).toString('hex');
+  return Buffer.from(Hash.hash256(buffer)).toString('hex');
 });
 
 ipcMain.handle('bsv-hash160', async (event, data) => {
   const { Hash } = getBsvSdk();
   const buffer = Buffer.from(data, 'utf8');
-  return Hash.hash160(buffer).toString('hex');
+  return Buffer.from(Hash.hash160(buffer)).toString('hex');
 });
 
 // IPC Handlers for BSV SDK signature verification
@@ -398,6 +399,312 @@ ipcMain.handle('bsv-verify-multisig', async (event, { signaturesHex, pubKeysHex,
 
     const allValid = validCount === signatures.length;
     return { success: true, valid: allValid, validCount };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Rúnar Integration - ESM dynamic import loaders
+// ---------------------------------------------------------------------------
+
+let _runarTesting = null;
+async function getRunarTesting() {
+  if (!_runarTesting) {
+    _runarTesting = await import('runar-testing');
+  }
+  return _runarTesting;
+}
+
+let _runarSdk = null;
+async function getRunarSdk() {
+  if (!_runarSdk) {
+    _runarSdk = await import('runar-sdk');
+  }
+  return _runarSdk;
+}
+
+// ---------------------------------------------------------------------------
+// Rúnar ScriptVM Verification
+// ---------------------------------------------------------------------------
+
+ipcMain.handle('runar-verify-script', async (event, { scriptHex, initialStackHex }) => {
+  try {
+    const { ScriptVM, hexToBytes, bytesToHex } = await getRunarTesting();
+
+    // Build unlocking script from initial stack values (push each as data)
+    let unlockingHex = '';
+    if (initialStackHex && initialStackHex.length > 0) {
+      for (const itemHex of initialStackHex) {
+        if (!itemHex || itemHex.length === 0) {
+          unlockingHex += '00'; // OP_0
+        } else {
+          const byteLen = itemHex.length / 2;
+          if (byteLen <= 75) {
+            unlockingHex += byteLen.toString(16).padStart(2, '0') + itemHex;
+          } else if (byteLen <= 255) {
+            unlockingHex += '4c' + byteLen.toString(16).padStart(2, '0') + itemHex;
+          } else {
+            unlockingHex += '4d' + (byteLen & 0xff).toString(16).padStart(2, '0') + ((byteLen >> 8) & 0xff).toString(16).padStart(2, '0') + itemHex;
+          }
+        }
+      }
+    }
+
+    const vm = new ScriptVM();
+    let result;
+
+    if (unlockingHex) {
+      const unlockingScript = hexToBytes(unlockingHex);
+      const lockingScript = hexToBytes(scriptHex);
+      result = vm.execute(unlockingScript, lockingScript);
+    } else {
+      result = vm.executeHex(scriptHex);
+    }
+
+    return {
+      success: result.success,
+      stack: result.stack.map(bytes => bytesToHex(bytes)),
+      altStack: result.altStack.map(bytes => bytesToHex(bytes)),
+      vmError: result.error || null,
+      opsExecuted: result.opsExecuted,
+      maxStackDepth: result.maxStackDepth
+    };
+  } catch (error) {
+    return { success: false, stack: [], altStack: [], vmError: error.message, error: error.message };
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Rúnar SDK Deployment
+// ---------------------------------------------------------------------------
+
+ipcMain.handle('runar-get-address', async (event, { wif }) => {
+  try {
+    const { LocalSigner } = await getRunarSdk();
+    const signer = new LocalSigner(wif);
+    const address = await signer.getAddress();
+    const pubKey = await signer.getPublicKey();
+    return { success: true, address, pubKey };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('runar-get-balance', async (event, { address, network }) => {
+  try {
+    const { WhatsOnChainProvider } = await getRunarSdk();
+    const provider = new WhatsOnChainProvider(network || 'mainnet');
+    const utxos = await provider.getUtxos(address);
+    const total = utxos.reduce((sum, u) => sum + u.satoshis, 0);
+    return { success: true, balance: total, utxoCount: utxos.length };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('runar-deploy-script', async (event, { wif, scriptHex, satoshis, network }) => {
+  try {
+    const { LocalSigner, WhatsOnChainProvider, buildDeployTransaction, selectUtxos, buildP2PKHScript } = await getRunarSdk();
+    const { Transaction, UnlockingScript } = getBsvSdk();
+
+    const signer = new LocalSigner(wif);
+    const address = await signer.getAddress();
+    const provider = new WhatsOnChainProvider(network || 'mainnet');
+
+    // Get UTXOs
+    const allUtxos = await provider.getUtxos(address);
+    if (allUtxos.length === 0) {
+      return { success: false, error: 'No UTXOs available. Fund the address first.' };
+    }
+
+    // Select UTXOs
+    const scriptByteLen = scriptHex.length / 2;
+    const selected = selectUtxos(allUtxos, satoshis, scriptByteLen);
+
+    // Build change script
+    const changeScript = buildP2PKHScript(address);
+
+    // Build unsigned transaction
+    const { tx, inputCount } = buildDeployTransaction(scriptHex, selected, satoshis, address, changeScript);
+
+    // Sign each input
+    const txHex = tx.toHex();
+    for (let i = 0; i < inputCount; i++) {
+      const sigHex = await signer.sign(txHex, i, changeScript, selected[i].satoshis);
+      const pubKeyHex = await signer.getPublicKey();
+
+      // Build P2PKH unlocking script: <sig> <pubkey>
+      const sigBytes = Buffer.from(sigHex, 'hex');
+      const pubBytes = Buffer.from(pubKeyHex, 'hex');
+
+      let unlockHex = '';
+      // Push signature
+      unlockHex += sigBytes.length.toString(16).padStart(2, '0') + sigHex;
+      // Push pubkey
+      unlockHex += pubBytes.length.toString(16).padStart(2, '0') + pubKeyHex;
+
+      tx.inputs[i].unlockingScript = UnlockingScript.fromHex(unlockHex);
+    }
+
+    // Broadcast
+    const txid = await provider.broadcast(tx);
+
+    return { success: true, txid, address };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// ---------------------------------------------------------------------------
+// AI Assistant
+// ---------------------------------------------------------------------------
+
+const BSCRIPT_SYSTEM_PROMPT = `You are an expert Bitcoin Script developer assistant for SVSCRIPT, a Bitcoin Script IDE.
+
+You write scripts using camelCase opcodes. Here are all valid opcodes:
+false, true, nop, if, notIf, else, endIf, verify, return,
+toAltStack, fromAltStack, 2drop, 2dup, 3dup, 2over, 2rot, 2swap,
+ifDup, depth, drop, dup, nip, over, pick, roll, rot, swap, tuck,
+cat, split, num2bin, bin2num, size, invert, and, or, xor, equal, equalVerify,
+1add, 1sub, negate, abs, not, 0notEqual,
+add, sub, mul, div, mod, lShift, rShift,
+booland, boolor, numEqual, numEqualVerify, numNotEqual,
+lessThan, greaterThan, lessThanOrEqual, greaterThanOrEqual, min, max, within,
+ripemd160, sha1, sha256, hash160, hash256,
+checkSig, checkSigVerify, checkMultiSig, checkMultiSigVerify, checkDataSig, checkDataSigVerify
+
+Syntax rules:
+- One opcode per line (or space-separated on a line)
+- Comments start with //
+- Integer literals: 0, 1, -1, 42, 1000 etc.
+- Hex data literals: 0x followed by even hex digits, e.g. 0xdeadbeef
+- Flow control: if/else/endIf blocks (notIf for negated condition)
+- Stack-based execution: values pushed left-to-right, opcodes consume from top
+- The script succeeds if the top stack value is truthy (non-zero) when execution ends
+
+Example - check if a number is greater than 10:
+// Push threshold and compare
+dup
+10 greaterThan
+verify
+
+Example - hash and compare:
+dup
+sha256
+0x<expected_hash> equal
+
+When generating scripts:
+- Include clear comments explaining each section
+- Suggest initial stack values the user should provide
+- Keep scripts concise and idiomatic
+
+When explaining scripts:
+- Walk through the stack state step by step
+- Explain what each opcode does to the stack
+
+When fixing errors:
+- Identify the root cause
+- Provide the corrected script`;
+
+function makeApiRequest(url, options, body) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(url, options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(JSON.parse(data));
+        } else {
+          let errMsg;
+          try {
+            const parsed = JSON.parse(data);
+            errMsg = parsed.error?.message || JSON.stringify(parsed);
+          } catch {
+            errMsg = data;
+          }
+          reject(new Error(`API error (${res.statusCode}): ${errMsg}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+ipcMain.handle('ai-chat', async (event, { provider, apiKey, model, messages, editorContent }) => {
+  try {
+    if (!apiKey) {
+      return { success: false, error: 'API key not configured. Set it in Settings > AI Assistant.' };
+    }
+
+    // Build context-aware system prompt
+    let systemPrompt = BSCRIPT_SYSTEM_PROMPT;
+    if (editorContent && editorContent.trim()) {
+      systemPrompt += '\n\nThe user currently has this script in their editor:\n```\n' + editorContent + '\n```';
+    }
+
+    let reply;
+
+    if (provider === 'claude') {
+      const result = await makeApiRequest(
+        'https://api.anthropic.com/v1/messages',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01'
+          }
+        },
+        {
+          model: model || 'claude-sonnet-4-20250514',
+          max_tokens: 4096,
+          system: systemPrompt,
+          messages: messages
+        }
+      );
+      reply = result.content.map(b => b.text).join('');
+
+    } else if (provider === 'openai') {
+      const openaiMessages = [
+        { role: 'system', content: systemPrompt },
+        ...messages
+      ];
+      const result = await makeApiRequest(
+        'https://api.openai.com/v1/chat/completions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          }
+        },
+        {
+          model: model || 'gpt-4o',
+          max_tokens: 4096,
+          messages: openaiMessages
+        }
+      );
+      reply = result.choices[0].message.content;
+
+    } else {
+      return { success: false, error: `Unknown provider: ${provider}` };
+    }
+
+    return { success: true, reply };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Compute OP_PUSH_TX preimage and signature
+ipcMain.handle('runar-compute-preimage', async (event, { txHex, inputIndex, lockingScriptHex, satoshis, codeSeparatorIndex }) => {
+  try {
+    const { computeOpPushTx } = await getRunarSdk();
+    const result = computeOpPushTx(txHex, inputIndex, lockingScriptHex, satoshis, codeSeparatorIndex);
+    return { success: true, sigHex: result.sigHex, preimageHex: result.preimageHex };
   } catch (error) {
     return { success: false, error: error.message };
   }

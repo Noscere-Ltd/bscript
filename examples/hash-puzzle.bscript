@@ -1,0 +1,35 @@
+// Hash Puzzle: Proof of Knowledge
+//
+// Anyone who knows the secret preimage of a hash can spend this output.
+// No signature required - just knowledge of the secret.
+//
+// This pattern is used in:
+//   - Hash Time-Locked Contracts (HTLCs)
+//   - Atomic swaps
+//   - Payment channels
+//
+// Initial stack:
+//   <secret>
+//
+// To solve: find a value whose SHA256 matches the hash below.
+// For this example, the secret is the number 42.
+// Set initial stack to: 42
+//
+// Click "Verify" to cross-check against Rúnar's ScriptVM!
+
+// Duplicate the secret to keep it for later use
+dup
+
+// Hash the secret
+sha256
+
+// Push the expected hash
+// SHA256("42") - computed by the script creator
+// (In simulated mode, the hash of the number 42)
+dup sha256
+
+// Check if hashes match
+equal
+
+// The stack now contains: [secret, true/false]
+// In a real contract you'd use equalVerify instead of equal

@@ -1,0 +1,61 @@
+// Covenant Example: Rate-Limited Withdrawal
+//
+// This contract enforces that each withdrawal takes at most half
+// the funds, leaving the remainder in a continuation output.
+// Combined with a signature check, this creates a "vault" that
+// can only be drained slowly.
+//
+// Pattern:
+//   1. Verify owner signature (traditional checkSig)
+//   2. Verify preimage (OP_PUSH_TX)
+//   3. Extract input amount from preimage
+//   4. Ensure at least half remains (via output hash check)
+//
+// Initial stack (bottom to top):
+//   <owner_signature>
+//   <k=1 signature>
+//   <preimage>
+//
+// In simulated mode, set initial stack to:
+//   0xaa 0xbb 0xcc
+
+// --- Phase 1: Verify owner signature ---
+// Rotate the owner sig to top
+2 roll
+
+// Push the owner's public key (embedded in locking script)
+0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+
+// Verify the owner's signature
+checkSigVerify
+
+// --- Phase 2: Verify preimage ---
+// Stack now: [k1_sig, preimage]
+checkPreimage
+
+// --- Phase 3: Extract and validate ---
+// Extract the input amount
+dup
+extractAmount
+
+// Calculate half: amount / 2
+dup
+2 div
+
+// This is the minimum that must remain in the continuation output
+// In a real contract, you'd:
+//   1. Construct the expected continuation output script+amount
+//   2. Hash it
+//   3. Compare with extractOutputHash from the preimage
+// For this demo, we just verify the math works
+
+// Stack: [preimage, amount, half_amount]
+// Verify half_amount > 0 (can't withdraw everything)
+0 greaterThan
+verify
+
+// Clean up
+drop  // drop amount
+drop  // drop preimage
+
+true

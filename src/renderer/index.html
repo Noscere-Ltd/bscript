@@ -35,6 +35,12 @@
           </svg>
           Reset
         </button>
+        <button id="btn-verify" class="btn btn-verify" title="Verify against Rúnar ScriptVM">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm3.22 5.97l-3.5 3.5a.75.75 0 0 1-1.06 0l-1.5-1.5a.75.75 0 1 1 1.06-1.06l.97.97 2.97-2.97a.75.75 0 0 1 1.06 1.06z"/>
+          </svg>
+          Verify
+        </button>
         <button id="btn-help" class="btn" title="Show Help">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
@@ -48,6 +54,19 @@
             <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319z"/>
           </svg>
           Settings
+        </button>
+        <button id="btn-ai" class="btn btn-ai" title="AI Assistant">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1zm0 1.2A5.8 5.8 0 1 0 13.8 8 5.8 5.8 0 0 0 8 2.2zM7 5h2v1H7zm0 2h2v4H7z"/>
+          </svg>
+          AI
+        </button>
+        <button id="btn-deploy" class="btn" title="Deploy Script">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 1l7 4v6l-7 4-7-4V5l7-4zm0 1.25L2.5 5.5v5l5.5 3.25 5.5-3.25v-5L8 2.25z"/>
+            <path d="M8 5v6M5 8h6"/>
+          </svg>
+          Deploy
         </button>
       </div>
     </div>
@@ -138,6 +157,13 @@
               <span class="radio-description">Provide spending tx and previous output details</span>
             </label>
           </div>
+          <div class="settings-option">
+            <label class="radio-option">
+              <input type="radio" name="tx-context-mode" value="preimage" />
+              <span class="radio-label">Preimage (OP_PUSH_TX)</span>
+              <span class="radio-description">Compute BIP-143 preimage and k=1 signature for covenant contracts</span>
+            </label>
+          </div>
 
           <!-- Sighash Input (shown by default) -->
           <div id="sighash-input-section" class="tx-context-input-section">
@@ -165,6 +191,41 @@
                    value="0" min="0" />
           </div>
 
+          <!-- Preimage (OP_PUSH_TX) Input -->
+          <div id="preimage-input-section" class="tx-context-input-section" style="display: none;">
+            <label for="preimage-tx-hex" class="settings-input-label">Spending Transaction (hex)</label>
+            <textarea id="preimage-tx-hex" class="settings-textarea" rows="3"
+                      placeholder="Raw spending transaction hex..."></textarea>
+
+            <label for="preimage-input-index" class="settings-input-label">Input Index</label>
+            <input type="number" id="preimage-input-index" class="settings-number-input"
+                   value="0" min="0" />
+
+            <label for="preimage-locking-script" class="settings-input-label">Locking Script of UTXO (hex)</label>
+            <input type="text" id="preimage-locking-script" class="settings-text-input"
+                   placeholder="Locking script hex of the UTXO being spent..." />
+
+            <label for="preimage-satoshis" class="settings-input-label">UTXO Satoshis</label>
+            <input type="number" id="preimage-satoshis" class="settings-number-input"
+                   value="0" min="0" />
+
+            <div class="tx-context-buttons" style="margin-top: 12px;">
+              <button id="btn-compute-preimage" class="btn-small">Compute Preimage</button>
+              <button id="btn-inject-preimage" class="btn-small" style="display: none;">Inject to Stack</button>
+            </div>
+
+            <div id="preimage-results" style="display: none; margin-top: 12px;">
+              <label class="settings-input-label">OP_PUSH_TX Signature (k=1)</label>
+              <input type="text" id="preimage-sig-output" class="settings-text-input" readonly
+                     style="font-size: 11px;" />
+              <label class="settings-input-label">Preimage (BIP-143)</label>
+              <textarea id="preimage-hex-output" class="settings-textarea" rows="4" readonly
+                        style="font-size: 11px;"></textarea>
+            </div>
+
+            <div id="preimage-status" class="settings-status"></div>
+          </div>
+
           <div class="tx-context-buttons">
             <button id="btn-apply-tx-context" class="btn-small">Apply Context</button>
             <button id="btn-clear-tx-context" class="btn-small">Clear Context</button>
@@ -172,11 +233,122 @@
           <div id="tx-context-status" class="settings-status"></div>
         </div>
 
+        <div class="settings-section">
+          <h3>AI Assistant</h3>
+          <p class="settings-description">
+            Configure an AI provider to generate, explain, and fix Bitcoin Scripts.
+          </p>
+          <div class="settings-option">
+            <label class="radio-option">
+              <input type="radio" name="ai-provider" value="claude" checked />
+              <span class="radio-label">Claude (Anthropic)</span>
+              <span class="radio-description">Claude Sonnet by default</span>
+            </label>
+          </div>
+          <div class="settings-option">
+            <label class="radio-option">
+              <input type="radio" name="ai-provider" value="openai" />
+              <span class="radio-label">OpenAI</span>
+              <span class="radio-description">GPT-4o by default</span>
+            </label>
+          </div>
+          <label for="ai-api-key" class="settings-input-label">API Key</label>
+          <input type="password" id="ai-api-key" class="settings-text-input"
+                 placeholder="Enter your API key" autocomplete="off" />
+          <label for="ai-model" class="settings-input-label">Model (optional override)</label>
+          <input type="text" id="ai-model" class="settings-text-input"
+                 placeholder="e.g., claude-sonnet-4-20250514 or gpt-4o" />
+          <div id="ai-settings-status" class="settings-status"></div>
+        </div>
+
         <div class="settings-footer">
           <p class="settings-note">
             <strong>Note:</strong> checkSig/checkMultiSig require transaction context when signature verification is enabled.
             checkDataSig works with just message, signature, and public key on the stack.
           </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Deploy Panel (Hidden by default) -->
+    <div id="deploy-panel" class="deploy-panel" style="display: none;">
+      <div class="deploy-header">
+        <h2>Deploy Script</h2>
+        <button id="btn-close-deploy" class="btn-small">Close</button>
+      </div>
+      <div class="deploy-content">
+        <div class="settings-section">
+          <h3>Wallet</h3>
+          <p class="settings-description">
+            Enter your WIF private key to deploy the current script to the network.
+            The key is only held in memory and never stored.
+          </p>
+          <label for="deploy-wif" class="settings-input-label">WIF Private Key</label>
+          <input type="password" id="deploy-wif" class="settings-text-input"
+                 placeholder="Enter WIF key (starts with 5, K, or L)" autocomplete="off" />
+          <div id="deploy-address" class="deploy-address-display" style="display: none;">
+            <span class="state-label">Address:</span>
+            <span id="deploy-address-value" class="state-value"></span>
+          </div>
+        </div>
+
+        <div class="settings-section" id="deploy-funding-section" style="display: none;">
+          <h3>Funding</h3>
+          <div class="deploy-balance-row">
+            <span class="state-label">Balance:</span>
+            <span id="deploy-balance-value" class="state-value">--</span>
+            <button id="btn-refresh-balance" class="btn-small" title="Refresh balance">Refresh</button>
+          </div>
+
+          <label for="deploy-satoshis" class="settings-input-label">Satoshis to lock</label>
+          <input type="number" id="deploy-satoshis" class="settings-number-input"
+                 value="1000" min="546" />
+
+          <div class="deploy-network-info">
+            <span class="state-label">Network:</span>
+            <span id="deploy-network-value" class="state-value">mainnet</span>
+          </div>
+        </div>
+
+        <div class="settings-section" id="deploy-action-section" style="display: none;">
+          <button id="btn-deploy-execute" class="btn btn-primary" style="width: 100%;">
+            Deploy to Network
+          </button>
+          <div id="deploy-status" class="settings-status"></div>
+          <div id="deploy-result" style="display: none;">
+            <label class="settings-input-label">Transaction ID</label>
+            <input type="text" id="deploy-txid" class="settings-text-input" readonly />
+            <a id="deploy-explorer-link" href="#" target="_blank" class="deploy-explorer-link" style="display: none;">
+              View on WhatsOnChain
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Assistant Panel (Hidden by default) -->
+    <div id="ai-panel" class="ai-panel" style="display: none;">
+      <div class="ai-header">
+        <h2>AI Assistant</h2>
+        <div class="ai-header-actions">
+          <button id="btn-ai-clear" class="btn-small" title="Clear chat">Clear</button>
+          <button id="btn-close-ai" class="btn-small">Close</button>
+        </div>
+      </div>
+      <div class="ai-quick-actions">
+        <button class="ai-action-btn" data-action="explain" title="Explain the current script">Explain Script</button>
+        <button class="ai-action-btn" data-action="fix" title="Fix errors in the current script">Fix Errors</button>
+        <button class="ai-action-btn" data-action="optimize" title="Suggest optimizations">Optimize</button>
+      </div>
+      <div id="ai-messages" class="ai-messages">
+        <div class="ai-message ai-message-assistant">
+          <div class="ai-message-content">I can help you write, explain, and fix Bitcoin Scripts. Ask me anything or use the quick actions above.</div>
+        </div>
+      </div>
+      <div class="ai-input-area">
+        <textarea id="ai-input" class="ai-input" placeholder="Ask about Bitcoin Script..." rows="3" spellcheck="false"></textarea>
+        <div class="ai-input-actions">
+          <button id="btn-ai-send" class="btn btn-primary ai-send-btn">Send</button>
         </div>
       </div>
     </div>
@@ -213,11 +385,19 @@
       <div class="panel panel-editor">
         <div class="panel-header">
           <span class="panel-title">Script Editor</span>
+          <div class="view-toggle">
+            <button class="view-toggle-btn active" data-view="script">Script</button>
+            <button class="view-toggle-btn" data-view="hex">Hex</button>
+            <button class="view-toggle-btn" data-view="asm">ASM</button>
+          </div>
           <div class="editor-info">
             <span id="cursor-position">Ln 1, Col 1</span>
           </div>
         </div>
         <div id="editor-container"></div>
+        <div id="compiled-output" class="compiled-output" style="display: none;">
+          <pre id="compiled-output-content"></pre>
+        </div>
       </div>
 
       <!-- Right Panel: Stack Visualization & Debug Info -->
@@ -319,9 +499,15 @@
         document.body.appendChild(script2);
 
         script2.onload = function() {
-          const script3 = document.createElement('script');
-          script3.src = 'app.js';
-          document.body.appendChild(script3);
+          const script2b = document.createElement('script');
+          script2b.src = 'compiler.js';
+          document.body.appendChild(script2b);
+
+          script2b.onload = function() {
+            const script3 = document.createElement('script');
+            script3.src = 'app.js';
+            document.body.appendChild(script3);
+          };
         };
       };
     }

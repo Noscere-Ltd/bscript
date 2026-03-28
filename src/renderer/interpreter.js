@@ -257,6 +257,25 @@ class ScriptInterpreter {
       return 'dup sha256 swap cat';
     });
 
+    // OP_PUSH_TX: checkPreimage expands to codeSeparator + push generator point G + checkSigVerify
+    expanded = expanded.replace(/\bcheckPreimage\b/g,
+      'codeSeparator 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798 checkSigVerify');
+
+    // Preimage field extractors (each consumes preimage from stack)
+    // Fixed-offset extractors (from start of preimage)
+    expanded = expanded.replace(/\bextractVersion\b/g,       '4 split drop bin2num');
+    expanded = expanded.replace(/\bextractHashPrevouts\b/g,  '4 split nip 32 split drop');
+    expanded = expanded.replace(/\bextractHashSequence\b/g,  '36 split nip 32 split drop');
+    expanded = expanded.replace(/\bextractOutpoint\b/g,      '68 split nip 36 split drop');
+    expanded = expanded.replace(/\bextractInputIndex\b/g,    '100 split nip 4 split drop bin2num');
+
+    // End-relative extractors (from end of preimage, handles variable scriptCode length)
+    expanded = expanded.replace(/\bextractAmount\b/g,        'size 52 sub split nip 8 split drop bin2num');
+    expanded = expanded.replace(/\bextractSequence\b/g,      'size 44 sub split nip 4 split drop bin2num');
+    expanded = expanded.replace(/\bextractOutputHash\b/g,    'size 40 sub split nip 32 split drop');
+    expanded = expanded.replace(/\bextractLocktime\b/g,      'size 8 sub split nip 4 split drop bin2num');
+    expanded = expanded.replace(/\bextractSigHashType\b/g,   'size 4 sub split nip bin2num');
+
     return expanded;
   }
 
@@ -412,6 +431,7 @@ class ScriptInterpreter {
       'endIf': () => this.op_endif(),
       'verify': () => this.op_verify(),
       'return': () => this.op_return(),
+      'codeSeparator': () => this.op_codeseparator(),
 
       // Stack operations
       'toAltStack': () => this.op_toaltstack(),
@@ -635,6 +655,12 @@ class ScriptInterpreter {
   op_return() {
     this.addHistory('return', 'Script terminated');
     throw new Error('Script returned (OP_RETURN)');
+  }
+
+  op_codeseparator() {
+    // No-op in the interpreter - OP_CODESEPARATOR only affects
+    // BIP-143 scriptCode computation which happens at the SDK level
+    this.addHistory('codeSeparator', 'Mark script code boundary (OP_CODESEPARATOR)');
   }
 
   // Stack operations

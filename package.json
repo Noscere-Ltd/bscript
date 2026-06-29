@@ -20,6 +20,6 @@
     "electron": "^27.3.11"
   },
   "dependencies": {
-    "@bsv/sdk": "^1.9.29"
+    "@bsv/sdk": "^2.1.6"
   }
 }

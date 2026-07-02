@@ -17,7 +17,7 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^27.3.11"
+    "electron": "^42.5.1"
   },
   "dependencies": {
     "@bsv/sdk": "^2.1.6"

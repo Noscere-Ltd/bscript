@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { stack, failure, exec } = require('./helpers');
+const { stack, failure, exec, narrowAll } = require('./helpers');
 
 test('constants push 0 and 1', async () => {
   assert.deepStrictEqual(await stack('false true 0 1'), [0, 1, 0, 1]);
@@ -61,7 +61,7 @@ test('the alt stack round-trips values', async () => {
   assert.deepStrictEqual(await stack('1 2 toAltStack fromAltStack'), [1, 2]);
 
   const interp = await exec('7 toAltStack');
-  assert.deepStrictEqual(interp.altStack, [7]);
+  assert.deepStrictEqual(narrowAll(interp.altStack), [7]);
 });
 
 test('the two-item stack ops', async () => {

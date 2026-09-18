@@ -591,7 +591,7 @@ function updateStackDisplay() {
 
       const type = document.createElement('span');
       type.className = 'stack-item-type';
-      type.textContent = typeof value;
+      type.textContent = stackValueType(value);
 
       item.appendChild(index);
       item.appendChild(valueSpan);
@@ -622,7 +622,7 @@ function updateStackDisplay() {
 
       const type = document.createElement('span');
       type.className = 'stack-item-type';
-      type.textContent = typeof value;
+      type.textContent = stackValueType(value);
 
       item.appendChild(index);
       item.appendChild(valueSpan);
@@ -633,6 +633,14 @@ function updateStackDisplay() {
 }
 
 // Format stack values for display
+// A script number is a bigint, which the panel calls a number, and bytes are
+// the 0x-prefixed strings.
+function stackValueType(value) {
+  if (typeof value === 'bigint') return 'number';
+  if (typeof value === 'string' && value.startsWith('0x')) return 'hex';
+  return typeof value;
+}
+
 function formatStackValue(value) {
   if (typeof value === 'string' && value.length > 40) {
     return value.substring(0, 40) + '...';

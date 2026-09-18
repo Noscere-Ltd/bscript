@@ -3,14 +3,14 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { ScriptInterpreter, PREIMAGE, exec, stack, failure, top } = require('./helpers');
+const { ScriptInterpreter, PREIMAGE, exec, stack, failure, top, narrowAll } = require('./helpers');
 
 test('run() executes the script instead of returning early', async () => {
   // Regression: run() called parse() without awaiting it, so every script
   // "succeeded" with an empty stack and zero instructions.
   const interp = await exec('1\n1\nadd\n2\nequal');
   assert.strictEqual(interp.instructions.length, 5);
-  assert.deepStrictEqual(interp.mainStack, [1]);
+  assert.deepStrictEqual(narrowAll(interp.mainStack), [1]);
 });
 
 test('size counts bytes, not hex characters', async () => {

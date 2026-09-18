@@ -260,17 +260,18 @@ function compileInstructionsToHex(instructions) {
       continue;
     }
 
-    // Integer literal
+    // Integer literal. Script numbers are arbitrary width, so parseInt would
+    // round anything past 2^53 to a different number.
     if (/^-?\d+$/.test(token)) {
-      var num = parseInt(token, 10);
-      if (num === 0) {
+      var num = BigInt(token);
+      if (num === 0n) {
         output.push(0x00);
-      } else if (num >= 1 && num <= 16) {
-        output.push(0x50 + num);
-      } else if (num === -1) {
+      } else if (num >= 1n && num <= 16n) {
+        output.push(0x50 + Number(num));
+      } else if (num === -1n) {
         output.push(0x4f);
       } else {
-        var encoded = encodeScriptNumber(BigInt(num));
+        var encoded = encodeScriptNumber(num);
         var pushBytes2 = emitPushData(encoded);
         for (var j = 0; j < pushBytes2.length; j++) {
           output.push(pushBytes2[j]);

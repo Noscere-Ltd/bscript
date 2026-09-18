@@ -73,18 +73,23 @@ class ScriptInterpreter {
   }
 
   // Encode a number as Bitcoin Script does: little-endian, sign-magnitude,
-  // minimally encoded, with zero as no bytes at all
+  // minimally encoded, with zero as no bytes at all.
+  //
+  // Script numbers are arbitrary width, so they are BigInt here. A double
+  // loses whole satoshis above 2^53, and an amount read out of a preimage is
+  // exactly the kind of number that goes past it.
   numToHex(value) {
-    let magnitude = Math.abs(Math.trunc(value));
+    const num = BigInt(value);
+    let magnitude = num < 0n ? -num : num;
     const bytes = [];
-    while (magnitude > 0) {
-      bytes.push(magnitude % 256);
-      magnitude = Math.floor(magnitude / 256);
+    while (magnitude > 0n) {
+      bytes.push(Number(magnitude % 256n));
+      magnitude /= 256n;
     }
     if (bytes.length === 0) return '';
     if (bytes[bytes.length - 1] & 0x80) {
-      bytes.push(value < 0 ? 0x80 : 0x00);
-    } else if (value < 0) {
+      bytes.push(num < 0n ? 0x80 : 0x00);
+    } else if (num < 0n) {
       bytes[bytes.length - 1] |= 0x80;
     }
     return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
@@ -93,7 +98,7 @@ class ScriptInterpreter {
   // Decode little-endian sign-magnitude bytes back to a number
   hexToNum(hex) {
     const byteCount = Math.floor(hex.length / 2);
-    let num = 0;
+    let num = 0n;
     let negative = false;
     for (let i = byteCount - 1; i >= 0; i--) {
       let byte = parseInt(hex.substr(i * 2, 2), 16);
@@ -101,7 +106,7 @@ class ScriptInterpreter {
         negative = true;
         byte &= 0x7f;
       }
-      num = num * 256 + byte;
+      num = num * 256n + BigInt(byte);
     }
     return negative ? -num : num;
   }
@@ -124,7 +129,7 @@ class ScriptInterpreter {
       }
       return hex;
     }
-    if (typeof value === 'number') {
+    if (typeof value === 'bigint' || typeof value === 'number') {
       return this.numToHex(value);
     }
     if (Array.isArray(value)) {
@@ -328,7 +333,9 @@ class ScriptInterpreter {
 
     // Load initial stack values if provided
     if (initialStack && initialStack.length > 0) {
-      this.mainStack = [...initialStack];
+      // Numbers handed in from outside become script numbers like any other
+      this.mainStack = initialStack.map(
+        (item) => (typeof item === 'number' ? BigInt(Math.trunc(item)) : item));
     }
 
     // Resolve imports first
@@ -492,7 +499,7 @@ class ScriptInterpreter {
 
   // Parse number
   parseNumber(token) {
-    return parseInt(token, 10);
+    return BigInt(token);
   }
 
   // Parse hex literal
@@ -640,19 +647,26 @@ class ScriptInterpreter {
     return this.mainStack[this.mainStack.length - 1 - depth];
   }
 
-  // Convert stack value to number
+  // Convert stack value to a script number, which is a BigInt
   toNumber(value) {
-    if (typeof value === 'number') return value;
-    if (typeof value === 'boolean') return value ? 1 : 0;
+    if (typeof value === 'bigint') return value;
+    if (typeof value === 'number') return BigInt(Math.trunc(value));
+    if (typeof value === 'boolean') return value ? 1n : 0n;
     if (typeof value === 'string') {
       if (this.isHexValue(value)) {
         const hex = value.slice(2);
         if (!this.isRelaxed()) this.requireMinimalNumber(hex);
         return this.hexToNum(hex);
       }
-      if (/^-?\d+$/.test(value.trim())) return parseInt(value, 10);
+      if (/^-?\d+$/.test(value.trim())) return BigInt(value.trim());
     }
     throw new Error(`Cannot convert '${value}' to a number`);
+  }
+
+  // A stack value used as a position, a width or a count. These index
+  // JavaScript arrays and strings, so they come back as a Number.
+  toIndex(value) {
+    return Number(this.toNumber(value));
   }
 
   // Under the strict rules a number may not carry a byte it does not need:
@@ -670,6 +684,7 @@ class ScriptInterpreter {
   // where a lone sign bit in the last byte still counts as zero.
   toBool(value) {
     if (typeof value === 'boolean') return value;
+    if (typeof value === 'bigint') return value !== 0n;
     if (typeof value === 'number') return value !== 0;
     if (typeof value === 'string') {
       if (this.isHexValue(value)) {
@@ -691,12 +706,12 @@ class ScriptInterpreter {
 
   // Constants
   op_false() {
-    this.pushStack(0);
+    this.pushStack(0n);
     this.addHistory('false', 'Push 0');
   }
 
   op_true() {
-    this.pushStack(1);
+    this.pushStack(1n);
     this.addHistory('true', 'Push 1');
   }
 
@@ -792,7 +807,7 @@ class ScriptInterpreter {
   }
 
   op_depth() {
-    this.pushStack(this.mainStack.length);
+    this.pushStack(BigInt(this.mainStack.length));
     this.addHistory('depth', `Stack depth: ${this.mainStack.length}`);
   }
 
@@ -821,7 +836,7 @@ class ScriptInterpreter {
   }
 
   op_pick() {
-    const n = this.toNumber(this.popStack());
+    const n = this.toIndex(this.popStack());
     if (n < 0 || n >= this.mainStack.length) {
       throw new Error('Invalid pick depth');
     }
@@ -831,7 +846,7 @@ class ScriptInterpreter {
   }
 
   op_roll() {
-    const n = this.toNumber(this.popStack());
+    const n = this.toIndex(this.popStack());
     if (n < 0 || n >= this.mainStack.length) {
       throw new Error('Invalid roll depth');
     }
@@ -989,28 +1004,28 @@ class ScriptInterpreter {
   op_div() {
     const b = this.toNumber(this.popStack());
     const a = this.toNumber(this.popStack());
-    if (b === 0) throw new Error('Division by zero');
-    this.pushStack(Math.trunc(a / b));
-    this.addHistory('div', `${a} / ${b} = ${Math.trunc(a / b)}`);
+    if (b === 0n) throw new Error('Division by zero');
+    this.pushStack(a / b);
+    this.addHistory('div', `${a} / ${b} = ${a / b}`);
   }
 
   op_mod() {
     const b = this.toNumber(this.popStack());
     const a = this.toNumber(this.popStack());
-    if (b === 0) throw new Error('Modulo by zero');
+    if (b === 0n) throw new Error('Modulo by zero');
     this.pushStack(a % b);
     this.addHistory('mod', `${a} % ${b} = ${a % b}`);
   }
 
   op_2mul() {
     const a = this.toNumber(this.popStack());
-    this.pushStack(a * 2);
-    this.addHistory('2mul', `${a} * 2 = ${a * 2}`);
+    this.pushStack(a * 2n);
+    this.addHistory('2mul', `${a} * 2 = ${a * 2n}`);
   }
 
   op_2div() {
     const a = this.toNumber(this.popStack());
-    const result = Math.trunc(a / 2);
+    const result = a / 2n;
     this.pushStack(result);
     this.addHistory('2div', `${a} / 2 = ${result}`);
   }
@@ -1023,54 +1038,57 @@ class ScriptInterpreter {
 
   op_abs() {
     const a = this.toNumber(this.popStack());
-    this.pushStack(Math.abs(a));
-    this.addHistory('abs', `Abs ${a} = ${Math.abs(a)}`);
+    const result = a < 0n ? -a : a;
+    this.pushStack(result);
+    this.addHistory('abs', `Abs ${a} = ${result}`);
   }
 
   op_not() {
     // Numeric in the SDK, not a truthiness test, so it decodes like 0notEqual
     const a = this.toNumber(this.popStack());
-    this.pushStack(a === 0 ? 1 : 0);
+    this.pushStack(a === 0n ? 1n : 0n);
     this.addHistory('not', `Boolean NOT`);
   }
 
   op_0notequal() {
     const a = this.toNumber(this.popStack());
-    this.pushStack(a !== 0 ? 1 : 0);
+    this.pushStack(a !== 0n ? 1n : 0n);
     this.addHistory('0notEqual', `${a} != 0`);
   }
 
   op_1add() {
     const a = this.toNumber(this.popStack());
-    this.pushStack(a + 1);
-    this.addHistory('1add', `${a} + 1 = ${a + 1}`);
+    this.pushStack(a + 1n);
+    this.addHistory('1add', `${a} + 1 = ${a + 1n}`);
   }
 
   op_1sub() {
     const a = this.toNumber(this.popStack());
-    this.pushStack(a - 1);
-    this.addHistory('1sub', `${a} - 1 = ${a - 1}`);
+    this.pushStack(a - 1n);
+    this.addHistory('1sub', `${a} - 1 = ${a - 1n}`);
   }
 
   op_min() {
     const b = this.toNumber(this.popStack());
     const a = this.toNumber(this.popStack());
-    this.pushStack(Math.min(a, b));
-    this.addHistory('min', `min(${a}, ${b}) = ${Math.min(a, b)}`);
+    const result = a < b ? a : b;
+    this.pushStack(result);
+    this.addHistory('min', `min(${a}, ${b}) = ${result}`);
   }
 
   op_max() {
     const b = this.toNumber(this.popStack());
     const a = this.toNumber(this.popStack());
-    this.pushStack(Math.max(a, b));
-    this.addHistory('max', `max(${a}, ${b}) = ${Math.max(a, b)}`);
+    const result = a > b ? a : b;
+    this.pushStack(result);
+    this.addHistory('max', `max(${a}, ${b}) = ${result}`);
   }
 
   op_within() {
     const max = this.toNumber(this.popStack());
     const min = this.toNumber(this.popStack());
     const x = this.toNumber(this.popStack());
-    this.pushStack(x >= min && x < max ? 1 : 0);
+    this.pushStack(x >= min && x < max ? 1n : 0n);
     this.addHistory('within', `${x} within [${min}, ${max})`);
   }
 
@@ -1140,7 +1158,7 @@ class ScriptInterpreter {
   }
 
   op_lshift() {
-    const n = this.toNumber(this.popStack());
+    const n = this.toIndex(this.popStack());
     const hex = this.toHexString(this.popStack());
     const out = this.shiftHex(hex, n, true);
     this.pushStack('0x' + out);
@@ -1148,7 +1166,7 @@ class ScriptInterpreter {
   }
 
   op_rshift() {
-    const n = this.toNumber(this.popStack());
+    const n = this.toIndex(this.popStack());
     const hex = this.toHexString(this.popStack());
     const out = this.shiftHex(hex, n, false);
     this.pushStack('0x' + out);
@@ -1160,7 +1178,7 @@ class ScriptInterpreter {
     const b = this.popStack();
     const a = this.popStack();
     const equal = this.toHexString(a).toLowerCase() === this.toHexString(b).toLowerCase();
-    this.pushStack(equal ? 1 : 0);
+    this.pushStack(equal ? 1n : 0n);
     this.addHistory('equal', `${a} == ${b}`);
   }
 
@@ -1172,49 +1190,49 @@ class ScriptInterpreter {
   op_lessthan() {
     const b = this.toNumber(this.popStack());
     const a = this.toNumber(this.popStack());
-    this.pushStack(a < b ? 1 : 0);
+    this.pushStack(a < b ? 1n : 0n);
     this.addHistory('lessThan', `${a} < ${b}`);
   }
 
   op_greaterthan() {
     const b = this.toNumber(this.popStack());
     const a = this.toNumber(this.popStack());
-    this.pushStack(a > b ? 1 : 0);
+    this.pushStack(a > b ? 1n : 0n);
     this.addHistory('greaterThan', `${a} > ${b}`);
   }
 
   op_lessthanorequal() {
     const b = this.toNumber(this.popStack());
     const a = this.toNumber(this.popStack());
-    this.pushStack(a <= b ? 1 : 0);
+    this.pushStack(a <= b ? 1n : 0n);
     this.addHistory('lessThanOrEqual', `${a} <= ${b}`);
   }
 
   op_greaterthanorequal() {
     const b = this.toNumber(this.popStack());
     const a = this.toNumber(this.popStack());
-    this.pushStack(a >= b ? 1 : 0);
+    this.pushStack(a >= b ? 1n : 0n);
     this.addHistory('greaterThanOrEqual', `${a} >= ${b}`);
   }
 
   op_booland() {
     const b = this.toNumber(this.popStack());
     const a = this.toNumber(this.popStack());
-    this.pushStack(a !== 0 && b !== 0 ? 1 : 0);
+    this.pushStack(a !== 0n && b !== 0n ? 1n : 0n);
     this.addHistory('booland', `${a} && ${b}`);
   }
 
   op_boolor() {
     const b = this.toNumber(this.popStack());
     const a = this.toNumber(this.popStack());
-    this.pushStack(a !== 0 || b !== 0 ? 1 : 0);
+    this.pushStack(a !== 0n || b !== 0n ? 1n : 0n);
     this.addHistory('boolor', `${a} || ${b}`);
   }
 
   op_numequal() {
     const b = this.toNumber(this.popStack());
     const a = this.toNumber(this.popStack());
-    this.pushStack(a === b ? 1 : 0);
+    this.pushStack(a === b ? 1n : 0n);
     this.addHistory('numEqual', `${a} == ${b}`);
   }
 
@@ -1226,7 +1244,7 @@ class ScriptInterpreter {
   op_numnotequal() {
     const b = this.toNumber(this.popStack());
     const a = this.toNumber(this.popStack());
-    this.pushStack(a !== b ? 1 : 0);
+    this.pushStack(a !== b ? 1n : 0n);
     this.addHistory('numNotEqual', `${a} != ${b}`);
   }
 
@@ -1239,7 +1257,7 @@ class ScriptInterpreter {
   }
 
   op_split() {
-    const position = this.toNumber(this.popStack());
+    const position = this.toIndex(this.popStack());
     const hex = this.toHexString(this.popStack());
     if (position < 0 || position * 2 > hex.length) {
       throw new Error(`Cannot split at byte ${position} - item is ${hex.length / 2} bytes`);
@@ -1250,8 +1268,8 @@ class ScriptInterpreter {
   }
 
   op_substr() {
-    const length = this.toNumber(this.popStack());
-    const offset = this.toNumber(this.popStack());
+    const length = this.toIndex(this.popStack());
+    const offset = this.toIndex(this.popStack());
     const hex = this.toHexString(this.popStack());
     const size = hex.length / 2;
     if (offset < 0 || offset >= size || length < 0 || length > size - offset) {
@@ -1263,7 +1281,7 @@ class ScriptInterpreter {
   }
 
   op_left() {
-    const length = this.toNumber(this.popStack());
+    const length = this.toIndex(this.popStack());
     const hex = this.toHexString(this.popStack());
     const size = hex.length / 2;
     if (length < 0 || length > size) {
@@ -1274,7 +1292,7 @@ class ScriptInterpreter {
   }
 
   op_right() {
-    const length = this.toNumber(this.popStack());
+    const length = this.toIndex(this.popStack());
     const hex = this.toHexString(this.popStack());
     const size = hex.length / 2;
     if (length < 0 || length > size) {
@@ -1287,27 +1305,28 @@ class ScriptInterpreter {
   // lShiftNum and rShiftNum shift the number, where lShift and rShift shift
   // the bytes. rShiftNum truncates toward zero, so it is not a floor shift.
   op_lshiftnum() {
-    const bits = this.toNumber(this.popStack());
+    const bits = this.toIndex(this.popStack());
     if (bits < 0) throw new Error('lShiftNum bits to shift must not be negative');
     const value = this.toNumber(this.popStack());
-    const result = value * Math.pow(2, bits);
+    const result = value << BigInt(bits);
     this.pushStack(result);
     this.addHistory('lShiftNum', `${value} << ${bits} = ${result}`);
   }
 
   op_rshiftnum() {
-    const bits = this.toNumber(this.popStack());
+    const bits = this.toIndex(this.popStack());
     if (bits < 0) throw new Error('rShiftNum bits to shift must not be negative');
     const value = this.toNumber(this.popStack());
-    const magnitude = Math.floor(Math.abs(value) / Math.pow(2, bits));
-    const result = value < 0 ? -magnitude : magnitude;
+    // Truncation toward zero, which is not what >> does to a negative number
+    const magnitude = (value < 0n ? -value : value) >> BigInt(bits);
+    const result = value < 0n ? -magnitude : magnitude;
     this.pushStack(result);
     this.addHistory('rShiftNum', `${value} >> ${bits} = ${result}`);
   }
 
   // Little-endian, sign-magnitude byte encoding (Bitcoin Script number format)
   op_num2bin() {
-    const size = this.toNumber(this.popStack());
+    const size = this.toIndex(this.popStack());
     if (size < 0 || size > ScriptInterpreter.MAX_ELEMENT_SIZE) {
       throw new Error(`num2bin cannot produce ${size} bytes`);
     }
@@ -1376,7 +1395,7 @@ class ScriptInterpreter {
   op_size() {
     const item = this.peekStack();
     const size = this.toHexString(item).length / 2;
-    this.pushStack(size);
+    this.pushStack(BigInt(size));
     this.addHistory('size', `Size: ${size} bytes`);
   }
 
@@ -1429,13 +1448,13 @@ class ScriptInterpreter {
         throw new Error(`checkSig error: ${result.error}`);
       }
 
-      this.pushStack(result.valid ? 1 : 0);
+      this.pushStack(result.valid ? 1n : 0n);
       this.addHistory('checkSig', `Verify signature: ${result.valid ? 'VALID' : 'INVALID'}`);
     } else {
       // Simulated mode: any signature passes except the empty one, which is
       // how a script says "no signature here" and never verifies
       const valid = this.toHexString(signature).length > 0;
-      this.pushStack(valid ? 1 : 0);
+      this.pushStack(valid ? 1n : 0n);
       this.addHistory('checkSig', valid
         ? 'Verify signature (simulated - always true)'
         : 'Empty signature is false even in simulated mode');
@@ -1476,12 +1495,12 @@ class ScriptInterpreter {
   }
 
   async op_checkmultisig() {
-    const numPubKeys = this.toNumber(this.popStack());
+    const numPubKeys = this.toIndex(this.popStack());
     const pubKeys = [];
     for (let i = 0; i < numPubKeys; i++) {
       pubKeys.push(this.popStack());
     }
-    const numSigs = this.toNumber(this.popStack());
+    const numSigs = this.toIndex(this.popStack());
     const sigs = [];
     for (let i = 0; i < numSigs; i++) {
       sigs.push(this.popStack());
@@ -1511,11 +1530,11 @@ class ScriptInterpreter {
         throw new Error(`checkMultiSig error: ${result.error}`);
       }
 
-      this.pushStack(result.valid ? 1 : 0);
+      this.pushStack(result.valid ? 1n : 0n);
       this.addHistory('checkMultiSig', `Verify ${numSigs} of ${numPubKeys} multisig: ${result.valid ? 'VALID' : 'INVALID'}`);
     } else {
       const valid = sigs.every(sig => this.toHexString(sig).length > 0);
-      this.pushStack(valid ? 1 : 0);
+      this.pushStack(valid ? 1n : 0n);
       this.addHistory('checkMultiSig', valid
         ? `Verify ${numSigs} of ${numPubKeys} signatures (simulated - always true)`
         : 'An empty signature is false even in simulated mode');

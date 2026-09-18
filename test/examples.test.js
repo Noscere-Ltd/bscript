@@ -9,7 +9,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { ScriptInterpreter } = require('./helpers');
+const { ScriptInterpreter, narrowAll } = require('./helpers');
 
 const EXAMPLES = path.join(__dirname, '..', 'examples');
 const read = (name) => fs.readFileSync(path.join(EXAMPLES, `${name}.bscript`), 'utf8');
@@ -62,7 +62,7 @@ for (const { name, stack, expect } of CASES) {
     const result = await interp.run(read(name), initial);
 
     assert.ok(result.success, `${name} failed: ${result.error}`);
-    assert.deepStrictEqual(interp.mainStack, expect);
+    assert.deepStrictEqual(narrowAll(interp.mainStack), expect);
   });
 }
 
@@ -71,7 +71,7 @@ test('hash-puzzle.bscript is solved by the secret its header names', async () =>
   const result = await interp.run(read('hash-puzzle'), [42]);
 
   assert.ok(result.success, result.error);
-  assert.deepStrictEqual(interp.mainStack, [1]);
+  assert.deepStrictEqual(narrowAll(interp.mainStack), [1]);
 });
 
 test('hash-puzzle.bscript rejects a secret that is not 42', async () => {

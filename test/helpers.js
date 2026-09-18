@@ -84,6 +84,16 @@ function opcodeInterpreter(txVersion = 1) {
   return interp;
 }
 
+// Script numbers live on the stack as BigInt, because they are arbitrary
+// width. The opcode tests read better with plain numbers, so the stack
+// helpers narrow a value that a double holds exactly.
+// ponytail: test/bigint.test.js checks the stack really holds bigints, so
+// narrowing here cannot hide a slide back to doubles.
+const narrow = (item) =>
+  (typeof item === 'bigint' && Number.isSafeInteger(Number(item)) ? Number(item) : item);
+
+const narrowAll = (items) => items.map(narrow);
+
 // Run a script, asserting it succeeded, and return the interpreter.
 async function exec(script, initialStack = [], txVersion = 1) {
   const assert = require('node:assert');
@@ -95,7 +105,7 @@ async function exec(script, initialStack = [], txVersion = 1) {
 
 // Run a script and return its final stack.
 async function stack(script, initialStack = [], txVersion = 1) {
-  return (await exec(script, initialStack, txVersion)).mainStack;
+  return narrowAll((await exec(script, initialStack, txVersion)).mainStack);
 }
 
 // Run a script and return the error it failed with, or null if it succeeded.
@@ -112,6 +122,7 @@ async function top(script, initialStack = [], txVersion = 1) {
 }
 
 module.exports = {
-  ScriptInterpreter, PREIMAGE, opcodeInterpreter, exec, stack, failure, top,
+  ScriptInterpreter, PREIMAGE, opcodeInterpreter, narrow, narrowAll,
+  exec, stack, failure, top,
   compileInstructionsToHex, disassemble
 };

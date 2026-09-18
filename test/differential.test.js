@@ -18,6 +18,10 @@ const CORPUS = {
     // easily got wrong by reaching for JavaScript's operators.
     '-100 7 div', '-100 7 mod', '7 -2 div', '7 -2 mod', '-7 -2 div', '-7 -2 mod',
     '0 1add', '-1 1add', '1 1sub', '5 negate', '-5 abs', '0 not', '3 not',
+    // Past what a double holds exactly
+    '9007199254740993 1 add', '0xffffffffffffffffffffffff7f 1 add',
+    '9007199254740992 1 add 1 sub', '0xffffffffffffff7f 2 mul',
+    '1 60 lShiftNum', '9007199254740993 8 num2bin', '9007199254740993 8 num2bin bin2num',
     // num2bin may not let the magnitude's top bit become the sign bit
     '128 1 num2bin', '-128 1 num2bin', '255 1 num2bin',
     '128 2 num2bin', '-128 2 num2bin', '255 2 num2bin',

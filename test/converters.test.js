@@ -21,27 +21,29 @@ test('numToHex encodes little-endian sign-magnitude, minimally', () => {
 });
 
 test('hexToNum reverses numToHex', () => {
-  for (const value of [0, 1, -1, 127, 128, -128, 255, 256, 1000, -1000, 10000, 2 ** 32]) {
+  const values = [0n, 1n, -1n, 127n, 128n, -128n, 255n, 256n, 1000n, -1000n, 10000n,
+    2n ** 32n, 2n ** 63n - 1n, -(2n ** 63n), 2n ** 100n];
+  for (const value of values) {
     assert.strictEqual(interp.hexToNum(interp.numToHex(value)), value, `round-trip ${value}`);
   }
 });
 
 test('hexToNum reads fixed-width fields', () => {
-  assert.strictEqual(interp.hexToNum('e8030000'), 1000);
-  assert.strictEqual(interp.hexToNum('1027000000000000'), 10000);
-  assert.strictEqual(interp.hexToNum(''), 0);
+  assert.strictEqual(interp.hexToNum('e8030000'), 1000n);
+  assert.strictEqual(interp.hexToNum('1027000000000000'), 10000n);
+  assert.strictEqual(interp.hexToNum(''), 0n);
 });
 
 test('toNumber decodes byte strings instead of guessing decimal', () => {
   // Regression: parseInt('0x0a', 10) is 0, so every arithmetic op silently
   // treated byte operands as zero.
-  assert.strictEqual(interp.toNumber('0x0a'), 10);
-  assert.strictEqual(interp.toNumber('0x1027'), 10000);
-  assert.strictEqual(interp.toNumber('0x81'), -1);
-  assert.strictEqual(interp.toNumber('0x'), 0);
-  assert.strictEqual(interp.toNumber(42), 42);
-  assert.strictEqual(interp.toNumber('42'), 42);
-  assert.strictEqual(interp.toNumber(true), 1);
+  assert.strictEqual(interp.toNumber('0x0a'), 10n);
+  assert.strictEqual(interp.toNumber('0x1027'), 10000n);
+  assert.strictEqual(interp.toNumber('0x81'), -1n);
+  assert.strictEqual(interp.toNumber('0x'), 0n);
+  assert.strictEqual(interp.toNumber(42), 42n);
+  assert.strictEqual(interp.toNumber('42'), 42n);
+  assert.strictEqual(interp.toNumber(true), 1n);
 });
 
 test('toNumber refuses values that are not numbers', () => {

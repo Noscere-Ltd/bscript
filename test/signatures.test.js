@@ -10,7 +10,7 @@ const {
   UnlockingScript, LockingScript, Spend
 } = require('@bsv/sdk');
 const { sighashFor, verifySig } = require('../src/main/signature');
-const { ScriptInterpreter } = require('./helpers');
+const { ScriptInterpreter, narrowAll } = require('./helpers');
 
 const BIP143 = 0x41; // SIGHASH_ALL | FORKID
 const OTDA = 0x61;   // SIGHASH_ALL | FORKID | CHRONICLE, the original algorithm
@@ -120,7 +120,7 @@ test('the interpreter verifies both scopes in transaction mode', async () => {
     const result = await interp.run(`0x${pubKeyHex} checkSig`, ['0x' + signUnder(scope)]);
 
     assert.ok(result.success, result.error);
-    assert.deepStrictEqual(interp.mainStack, [1], `scope 0x${scope.toString(16)}`);
+    assert.deepStrictEqual(narrowAll(interp.mainStack), [1], `scope 0x${scope.toString(16)}`);
   }
 });
 
@@ -134,7 +134,7 @@ test('the interpreter rejects a signature whose scope does not match', async () 
   const result = await interp.run(`0x${pubKeyHex} checkSig`, ['0x' + wrongScope]);
 
   assert.ok(result.success, result.error);
-  assert.deepStrictEqual(interp.mainStack, [0]);
+  assert.deepStrictEqual(narrowAll(interp.mainStack), [0]);
 });
 
 test('a signature after a codeSeparator covers only the script that follows', async () => {
@@ -157,7 +157,7 @@ test('a signature after a codeSeparator covers only the script that follows', as
 
   const result = await interp.run(script, ['0x' + signatureHex]);
   assert.ok(result.success, result.error);
-  assert.deepStrictEqual(interp.mainStack, [1]);
+  assert.deepStrictEqual(narrowAll(interp.mainStack), [1]);
 
   // The same signature against the whole script is a different message
   const whole = verifySig({ signatureHex, pubKeyHex, txContext: ctx, requireLowS: true });

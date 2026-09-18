@@ -36,7 +36,10 @@ test('pick copies the nth item, roll moves it', async () => {
 });
 
 test('pick and roll reject a depth the stack cannot reach', async () => {
-  assert.match(await failure('1 2 5 pick'), /Cannot execute 'pick'/);
+  assert.match(await failure('1 2 5 pick'), /Invalid pick depth/);
+  // A negative depth used to index past the bottom of the stack and push
+  // undefined, which then travelled through the rest of the script.
+  assert.match(await failure('1 2 -1 pick'), /Invalid pick depth/);
   assert.match(await failure('1 2 5 roll'), /Invalid roll depth/);
   assert.match(await failure('1 2 -1 roll'), /Invalid roll depth/);
 });

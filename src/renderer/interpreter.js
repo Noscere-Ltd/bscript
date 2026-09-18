@@ -810,6 +810,9 @@ class ScriptInterpreter {
 
   op_pick() {
     const n = this.toNumber(this.popStack());
+    if (n < 0 || n >= this.mainStack.length) {
+      throw new Error('Invalid pick depth');
+    }
     const value = this.peekStack(n);
     this.pushStack(value);
     this.addHistory('pick', `Copy item at depth ${n}`);
@@ -939,7 +942,7 @@ class ScriptInterpreter {
     const a = this.toNumber(this.popStack());
     if (b === 0) throw new Error('Division by zero');
     this.pushStack(Math.trunc(a / b));
-    this.addHistory('div', `${a} / ${b} = ${Math.floor(a / b)}`);
+    this.addHistory('div', `${a} / ${b} = ${Math.trunc(a / b)}`);
   }
 
   op_mod() {
@@ -1187,21 +1190,62 @@ class ScriptInterpreter {
   // Little-endian, sign-magnitude byte encoding (Bitcoin Script number format)
   op_num2bin() {
     const size = this.toNumber(this.popStack());
-    const num = this.toNumber(this.popStack());
-    let value = Math.abs(num);
-    const bytes = [];
-    while (value > 0) {
-      bytes.push(value % 256);
-      value = Math.floor(value / 256);
+    if (size < 0 || size > ScriptInterpreter.MAX_ELEMENT_SIZE) {
+      throw new Error(`num2bin cannot produce ${size} bytes`);
     }
+
+    // The operand is taken as bytes, so num2bin can pad data as well as a
+    // number. Strip it to its minimal form first: padding a value that
+    // already uses the top bit of its last byte would silently negate it.
+    const bytes = this.minimallyEncodeBytes(this.hexToBytes(this.toHexString(this.popStack())));
     if (bytes.length > size) {
-      throw new Error(`Cannot fit ${num} into ${size} bytes`);
+      throw new Error(`Cannot fit 0x${this.bytesToHexString(bytes)} into ${size} bytes`);
     }
-    while (bytes.length < size) bytes.push(0);
-    if (num < 0) bytes[size - 1] |= 0x80;
-    const hex = bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+
+    let result = bytes;
+    if (bytes.length !== size) {
+      result = new Array(size).fill(0);
+      const signBit = bytes.length > 0 ? bytes[bytes.length - 1] & 0x80 : 0;
+      if (bytes.length > 0) bytes[bytes.length - 1] &= 0x7f;
+      for (let i = 0; i < bytes.length; i++) result[i] = bytes[i];
+      if (signBit !== 0) result[size - 1] |= 0x80;
+    }
+
+    const hex = this.bytesToHexString(result);
     this.pushStack('0x' + hex);
-    this.addHistory('num2bin', `Convert ${num} to ${size} bytes`);
+    this.addHistory('num2bin', `Convert to ${size} bytes: 0x${hex}`);
+  }
+
+  hexToBytes(hex) {
+    const bytes = [];
+    for (let i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.substr(i, 2), 16));
+    return bytes;
+  }
+
+  bytesToHexString(bytes) {
+    return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // Drop the bytes a script number does not need, keeping its sign. Mirrors
+  // minimallyEncode in @bsv/sdk.
+  minimallyEncodeBytes(bytes) {
+    if (bytes.length === 0) return bytes;
+    const last = bytes[bytes.length - 1];
+    if ((last & 0x7f) !== 0) return bytes;
+    if (bytes.length === 1) return [];
+    if ((bytes[bytes.length - 2] & 0x80) !== 0) return bytes;
+
+    for (let i = bytes.length - 1; i > 0; i--) {
+      if (bytes[i - 1] !== 0) {
+        if ((bytes[i - 1] & 0x80) !== 0) {
+          bytes[i] = last;
+          return bytes.slice(0, i + 1);
+        }
+        bytes[i - 1] |= last;
+        return bytes.slice(0, i);
+      }
+    }
+    return [];
   }
 
   op_bin2num() {
@@ -1434,6 +1478,7 @@ class ScriptInterpreter {
 
 // SIGHASH_ALL | SIGHASH_FORKID, the type the OP_PUSH_TX binding pins
 ScriptInterpreter.SIGHASH_ALL_FORKID = 0x41;
+ScriptInterpreter.MAX_ELEMENT_SIZE = 520;
 
 // Export for use in app
 if (typeof module !== 'undefined' && module.exports) {

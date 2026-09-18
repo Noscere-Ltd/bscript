@@ -58,8 +58,29 @@ test('num2bin writes little-endian bytes of the requested width', async () => {
 });
 
 test('num2bin rejects a number too wide for the requested size', async () => {
-  assert.match(await failure('100000 2 num2bin'), /Cannot fit 100000 into 2 bytes/);
-  assert.match(await failure('1 0 num2bin'), /Cannot fit 1 into 0 bytes/);
+  assert.match(await failure('100000 2 num2bin'), /Cannot fit 0xa08601 into 2 bytes/);
+  assert.match(await failure('1 0 num2bin'), /Cannot fit 0x01 into 0 bytes/);
+});
+
+test('num2bin refuses a width that would turn the magnitude into a sign bit', async () => {
+  // 128 encodes as 0x8000: the 0x80 is magnitude, and squeezing it into one
+  // byte used to produce 0x80, which reads back as negative zero.
+  assert.match(await failure('128 1 num2bin'), /Cannot fit 0x8000 into 1 bytes/);
+  assert.match(await failure('-128 1 num2bin'), /Cannot fit 0x8080 into 1 bytes/);
+  assert.match(await failure('255 1 num2bin'), /Cannot fit 0xff00 into 1 bytes/);
+  // Two bytes is enough for all three, and the sign moves to the new last byte
+  assert.strictEqual(await top('128 2 num2bin'), '0x8000');
+  assert.strictEqual(await top('-128 2 num2bin'), '0x8080');
+  assert.strictEqual(await top('255 2 num2bin'), '0xff00');
+});
+
+test('num2bin pads a byte string as well as a number', async () => {
+  // It is the only way to pad data, so it takes the operand as bytes
+  assert.strictEqual(await top('4 num2bin', ['0xaa2b']), '0xaa2b0000');
+  assert.strictEqual(await top('4 num2bin', ['0x']), '0x00000000');
+  // The bytes are still read as a number, so a top bit in the last byte is
+  // the sign and moves to the new last byte
+  assert.strictEqual(await top('4 num2bin', ['0xaabb']), '0xaa3b0080');
 });
 
 test('bin2num reads little-endian sign-magnitude bytes', async () => {

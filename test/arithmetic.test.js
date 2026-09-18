@@ -3,7 +3,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { stack, failure, top } = require('./helpers');
+const { exec, stack, failure, top } = require('./helpers');
 
 test('add, sub and mul', async () => {
   assert.deepStrictEqual(await stack('7 5 add'), [12]);
@@ -57,6 +57,16 @@ test('not and 0notEqual read all-zero bytes as false', async () => {
   assert.strictEqual(await top('not', ['0x00'], 2), 1);
   assert.strictEqual(await top('0notEqual', ['0x00'], 2), 0);
   assert.strictEqual(await top('0notEqual', ['0x01']), 1);
+});
+
+test('the div history line reports the value div pushed', async () => {
+  // It used to read Math.floor, so a negative division told the user -15 while
+  // the stack held -14.
+  const interp = await exec('-100 7 div');
+  const line = interp.executionHistory.find((entry) => entry.opcode === 'div');
+
+  assert.strictEqual(await top('-100 7 div'), -14);
+  assert.strictEqual(line.description, '-100 / 7 = -14');
 });
 
 test('version 1 rejects a non-minimally encoded number', async () => {

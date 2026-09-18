@@ -18,6 +18,12 @@ const CORPUS = {
     // easily got wrong by reaching for JavaScript's operators.
     '-100 7 div', '-100 7 mod', '7 -2 div', '7 -2 mod', '-7 -2 div', '-7 -2 mod',
     '0 1add', '-1 1add', '1 1sub', '5 negate', '-5 abs', '0 not', '3 not',
+    // num2bin may not let the magnitude's top bit become the sign bit
+    '128 1 num2bin', '-128 1 num2bin', '255 1 num2bin',
+    '128 2 num2bin', '-128 2 num2bin', '255 2 num2bin',
+    '0xaa2b 4 num2bin', '0xaabb 4 num2bin', '0x0100 4 num2bin',
+    // num2bin takes the operand as bytes and strips the ones it does not need
+    '0x0100 1 num2bin', '0x0180 1 num2bin', '0x00000080 1 num2bin',
     '0 0notEqual', '7 0notEqual',
     // Values that straddle a byte boundary, where the sign byte appears.
     '127 1add', '128 1sub', '32767 1add', '-32768 1sub', '1000000 1000000 mul'
@@ -88,7 +94,8 @@ const CORPUS = {
   // the fact of rejection is compared.
   'error paths': [
     'drop', '1 0 div', '1 0 mod', '0 verify', '1 if 2', '0x11 0x2233 and',
-    '0x1122 5 split', 'endIf', '1 else 2 endIf', '1 2 5 pick', '0 0 equalVerify'
+    '0x1122 5 split', 'endIf', '1 else 2 endIf', '1 2 5 pick', '1 2 3 -1 pick',
+    '0 0 equalVerify'
   ]
 };
 

@@ -75,3 +75,34 @@ test('extractors consume the preimage, so scripts dup before each one', async ()
   assert.deepStrictEqual(await stack('dup extractVersion drop dup extractLocktime drop size', [PREIMAGE]),
     [PREIMAGE, 181]);
 });
+
+test('a macro name is only expanded as a whole word', async () => {
+  // A name that merely contains a macro name is a different token, and
+  // rewriting part of it produced a script the author never wrote.
+  assert.strictEqual(expand('myhashCat'), 'myhashCat');
+  assert.strictEqual(expand('hashCatalogue'), 'hashCatalogue');
+  assert.strictEqual(expand('prefixxRot_3'), 'prefixxRot_3');
+  assert.strictEqual(expand('xDrop_2suffix'), 'xDrop_2suffix');
+  // And the real thing still expands
+  assert.strictEqual(expand('hashCat'), 'dup sha256 swap cat');
+  assert.strictEqual(expand('xRot_3'), '3 roll');
+});
+
+test('a macro named in a comment is not expanded into the script', async () => {
+  // Comments are stripped before expansion, so mentioning a macro while
+  // explaining the code cannot put its body in the token stream.
+  const interp = new ScriptInterpreter();
+  await interp.parse('// hashCat would go here\n1 2 add', []);
+
+  assert.deepStrictEqual(interp.instructions, ['1', '2', 'add']);
+});
+
+test('a named import mentioned in a comment is not expanded either', () => {
+  // parse() strips comments before it calls expandMacros, so the expansion
+  // never sees the mention. Checked here on the text parse() hands over.
+  const interp = new ScriptInterpreter();
+  interp.namedImports = { double: '2 mul' };
+
+  assert.strictEqual(interp.expandMacros('5 double').trim(), '5 2 mul');
+  assert.strictEqual(interp.expandMacros('5 add').trim(), '5 add');
+});

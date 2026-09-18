@@ -275,7 +275,7 @@ class ScriptInterpreter {
     });
 
     // Expand xSwap macros: xSwap_n (swap top with nth item)
-    expanded = expanded.replace(/xSwap_(\d+)/g, (match, n) => {
+    expanded = expanded.replace(/\bxSwap_(\d+)\b/g, (match, n) => {
       const depth = parseInt(n);
       if (depth === 0 || depth === 1) return 'swap'; // xSwap_1 is just swap
 
@@ -286,7 +286,7 @@ class ScriptInterpreter {
     });
 
     // Expand xDrop macros: xDrop_n (drop nth item)
-    expanded = expanded.replace(/xDrop_(\d+)/g, (match, n) => {
+    expanded = expanded.replace(/\bxDrop_(\d+)\b/g, (match, n) => {
       const depth = parseInt(n);
       if (depth === 0) return 'drop'; // xDrop_0 is just drop
 
@@ -296,7 +296,7 @@ class ScriptInterpreter {
     });
 
     // Expand xRot macros: xRot_n (rotate nth item to top)
-    expanded = expanded.replace(/xRot_(\d+)/g, (match, n) => {
+    expanded = expanded.replace(/\bxRot_(\d+)\b/g, (match, n) => {
       const depth = parseInt(n);
       if (depth === 0 || depth === 1) return ''; // xRot_0/1 is nop
 
@@ -305,7 +305,7 @@ class ScriptInterpreter {
     });
 
     // Expand hashCat macro: duplicates, hashes, concatenates
-    expanded = expanded.replace(/hashCat/g, () => {
+    expanded = expanded.replace(/\bhashCat\b/g, () => {
       return 'dup sha256 swap cat';
     });
 
@@ -341,17 +341,22 @@ class ScriptInterpreter {
     // Resolve imports first
     const importResolved = await this.resolveImports(scriptText, currentFilePath);
 
+    // Comments come out before macros expand. A name mentioned in a comment
+    // is not code, and replacing it there put whole macro bodies into the
+    // token stream.
+    const withoutComments = importResolved.split('\n')
+      .map((line) => line.replace(/\/\/.*$/, ''))
+      .join('\n');
+
     // Expand macros before tokenization
-    const expandedScript = this.expandMacros(importResolved);
+    const expandedScript = this.expandMacros(withoutComments);
 
     const lines = expandedScript.split('\n');
     const tokens = [];
     const tokenLines = [];
 
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-      let line = lines[lineIndex];
-      // Remove comments
-      line = line.replace(/\/\/.*$/, '').trim();
+      const line = lines[lineIndex].trim();
       if (!line) continue;
 
       // Split by whitespace and process each token

@@ -6,22 +6,20 @@
 //
 // Initial stack (bottom to top):
 //   <preimage>        BIP-143 sighash preimage
-//   <k=1 signature>   DER signature from private key k=1
 //
-// checkSigVerify pops the pubkey then the signature, so the signature sits
-// on top and the preimage is left behind for the extractors.
+// checkPreimage consumes nothing and leaves the preimage where it found it,
+// ready for the extractors.
 //
 // In simulated mode (default), the extractors slice real byte offsets, so the
-// first item must be a full-length dummy preimage:
-//   0x0200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001ab00000000000000000000000000000000aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd0000000041000000 0xbeef
+// item must be a full-length dummy preimage:
+//   0x0200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001ab00000000000000000000000000000000aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd0000000041000000
 //
 // How OP_PUSH_TX works:
-//   checkPreimage expands to:
-//     codeSeparator                    (0xab - marks scriptCode boundary)
-//     0x0279be667e...f81798            (push generator point G, 33 bytes)
-//     checkSigVerify                   (verify k=1 signature)
-//
-//   The signature proves the preimage matches the real transaction.
+//   checkPreimage compiles to a fixed 428-byte run that derives an ECDSA
+//   signature over hash256(preimage) in script and checks it with
+//   OP_CHECKSIGVERIFY against a fixed public key. The node only accepts the
+//   spend if the preimage on the stack is the one it is signing, so no
+//   signature comes from the spender and a forged preimage cannot pass.
 //   Once verified, extractors slice the preimage at known offsets.
 
 // --- Verify preimage authenticity ---

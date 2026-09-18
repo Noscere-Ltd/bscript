@@ -552,24 +552,30 @@
         document.body.appendChild(script2);
 
         script2.onload = function() {
-          const script2b = document.createElement('script');
-          script2b.src = 'compiler.js';
-          document.body.appendChild(script2b);
+          const script2a = document.createElement('script');
+          script2a.src = 'push-tx-binding.js';
+          document.body.appendChild(script2a);
 
-          script2b.onload = function() {
-            const script2c = document.createElement('script');
-            script2c.src = 'chain.js';
-            document.body.appendChild(script2c);
+          script2a.onload = function() {
+            const script2b = document.createElement('script');
+            script2b.src = 'compiler.js';
+            document.body.appendChild(script2b);
 
-            script2c.onload = function() {
-              const script2d = document.createElement('script');
-              script2d.src = 'chain-ui.js';
-              document.body.appendChild(script2d);
+            script2b.onload = function() {
+              const script2c = document.createElement('script');
+              script2c.src = 'chain.js';
+              document.body.appendChild(script2c);
 
-              script2d.onload = function() {
-                const script3 = document.createElement('script');
-                script3.src = 'app.js';
-                document.body.appendChild(script3);
+              script2c.onload = function() {
+                const script2d = document.createElement('script');
+                script2d.src = 'chain-ui.js';
+                document.body.appendChild(script2d);
+
+                script2d.onload = function() {
+                  const script3 = document.createElement('script');
+                  script3.src = 'app.js';
+                  document.body.appendChild(script3);
+                };
               };
             };
           };

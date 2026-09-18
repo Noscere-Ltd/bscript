@@ -225,6 +225,17 @@ function compileInstructionsToHex(instructions) {
       continue;
     }
 
+    // checkPreimage is not an opcode: it compiles to the vendored OP_PUSH_TX
+    // binding, a fixed run of bytes that ties the preimage on the stack to
+    // the transaction being signed. push-tx-binding.js defines the constant.
+    if (token === 'checkPreimage') {
+      var bindingBytes = hexToBytes(CHECK_PREIMAGE_BINDING_HEX);
+      for (var b = 0; b < bindingBytes.length; b++) {
+        output.push(bindingBytes[b]);
+      }
+      continue;
+    }
+
     // Hex data literal
     if (token.indexOf('0x') === 0) {
       var hexStr = token.substring(2);
@@ -269,8 +280,18 @@ function disassemble(hexString) {
   var parts = [];
   var i = 0;
 
+  var bindingHex = CHECK_PREIMAGE_BINDING_HEX;
+
   while (i < bytes.length) {
     var op = bytes[i];
+
+    // The OP_PUSH_TX binding is one logical instruction. Print the token that
+    // produced it rather than 428 bytes of opcodes.
+    if (bytesToHex(bytes.slice(i, i + bindingHex.length / 2)) === bindingHex) {
+      parts.push('checkPreimage');
+      i += bindingHex.length / 2;
+      continue;
+    }
 
     // Direct push: 1-75 bytes
     if (op >= 0x01 && op <= 0x4b) {

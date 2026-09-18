@@ -27,22 +27,22 @@ const CASES = [
   { name: 'multisig-2of3', stack: [0, '0xaa', '0xbb'], expect: [1] },
   {
     name: 'covenant-output-hash',
-    stack: () => [preimageFrom('covenant-output-hash'), '0xdead'],
+    stack: () => [preimageFrom('covenant-output-hash')],
     expect: [1]
   },
   {
     name: 'covenant-locktime',
-    stack: () => [preimageFrom('covenant-locktime'), '0xdeadbeef'],
+    stack: () => [preimageFrom('covenant-locktime')],
     expect: [1]
   },
   {
     name: 'covenant-rate-limit',
-    stack: () => ['0xaa', preimageFrom('covenant-rate-limit'), '0xcc'],
+    stack: () => ['0xaa', preimageFrom('covenant-rate-limit')],
     expect: [1]
   },
   {
     name: 'op-push-tx',
-    stack: () => [preimageFrom('op-push-tx'), '0xbeef'],
+    stack: () => [preimageFrom('op-push-tx')],
     expect: [1]
   }
 ];

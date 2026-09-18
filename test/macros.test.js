@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { ScriptInterpreter, PREIMAGE, stack, top } = require('./helpers');
+const { ScriptInterpreter, PREIMAGE, stack, top, failure } = require('./helpers');
 
 const expand = (src) => new ScriptInterpreter().expandMacros(src).trim();
 
@@ -35,18 +35,20 @@ test('hashCat hashes a copy and concatenates it', async () => {
   assert.strictEqual(await top('hashCat', ['0xdead']), '0x' + hashed + 'dead');
 });
 
-test('checkPreimage expands to the OP_PUSH_TX sequence', () => {
-  assert.strictEqual(
-    expand('checkPreimage'),
-    'codeSeparator 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798 checkSigVerify'
-  );
+test('checkPreimage is not expanded: it compiles to the binding', () => {
+  // It used to expand to `codeSeparator <G> checkSigVerify`, which checked a
+  // signature the spender supplied and never tied it to the preimage.
+  assert.strictEqual(expand('checkPreimage'), 'checkPreimage');
 });
 
 test('checkPreimage leaves the preimage behind for the extractors', async () => {
-  // Regression: the signature has to sit above the preimage, or checkSigVerify
-  // consumes the preimage instead of the signature.
-  assert.deepStrictEqual(await stack('checkPreimage', [PREIMAGE, '0xsig'.replace('sig', 'a1')]),
-    [PREIMAGE]);
+  // The binding consumes nothing: it derives its own signature from the
+  // preimage and puts the preimage back. Net stack effect zero.
+  assert.deepStrictEqual(await stack('checkPreimage', [PREIMAGE]), [PREIMAGE]);
+});
+
+test('checkPreimage without a preimage on the stack fails', async () => {
+  assert.match(await failure('checkPreimage'), /requires the preimage/);
 });
 
 test('the fixed-offset extractors read from the start of the preimage', async () => {

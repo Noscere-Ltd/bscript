@@ -4,6 +4,8 @@
 // opcodes. Mirror what the main process does so the ops can run under node.
 
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const { toHashBuffer } = require('../src/main/hash-input');
 
 const digest = (algorithm) => async (data) =>
@@ -26,6 +28,17 @@ global.window = {
 };
 
 const ScriptInterpreter = require('../src/renderer/interpreter.js');
+
+// compiler.js and push-tx-binding.js are renderer global scripts with no
+// exports. Load them in the order index.html does: the compiler reads the
+// binding constant the other one defines.
+const renderer = (name) =>
+  fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', name), 'utf8');
+
+const { compileInstructionsToHex, disassemble } = new Function(
+  renderer('push-tx-binding.js') + renderer('compiler.js') +
+  '\nreturn { compileInstructionsToHex, disassemble };'
+)();
 
 // A 181-byte BIP-143 preimage with recognisable field values: version 2,
 // input index 1, amount 10000, sequence 0xffffffff, hashOutputs all 0xcc,
@@ -70,4 +83,7 @@ async function top(script, initialStack = []) {
   return items[items.length - 1];
 }
 
-module.exports = { ScriptInterpreter, PREIMAGE, exec, stack, failure, top };
+module.exports = {
+  ScriptInterpreter, PREIMAGE, exec, stack, failure, top,
+  compileInstructionsToHex, disassemble
+};

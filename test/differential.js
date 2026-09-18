@@ -10,16 +10,8 @@
 // adds the clean-stack and truthiness rules, which say nothing about whether
 // the two engines agree on what the opcodes did.
 
-const fs = require('node:fs');
-const path = require('node:path');
 const { Spend, LockingScript, UnlockingScript } = require('@bsv/sdk');
-const { ScriptInterpreter } = require('./helpers');
-
-// compiler.js is a renderer global script with no exports.
-const compileInstructionsToHex = new Function(
-  fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'compiler.js'), 'utf8') +
-  '\nreturn compileInstructionsToHex;'
-)();
+const { ScriptInterpreter, compileInstructionsToHex } = require('./helpers');
 
 const toHex = (bytes) => Buffer.from(bytes).toString('hex');
 

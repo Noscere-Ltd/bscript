@@ -293,10 +293,6 @@ class ScriptInterpreter {
       return 'dup sha256 swap cat';
     });
 
-    // OP_PUSH_TX: checkPreimage expands to codeSeparator + push generator point G + checkSigVerify
-    expanded = expanded.replace(/\bcheckPreimage\b/g,
-      'codeSeparator 0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798 checkSigVerify');
-
     // Preimage field extractors (each consumes preimage from stack)
     // Fixed-offset extractors (from start of preimage)
     expanded = expanded.replace(/\bextractVersion\b/g,       '4 split drop bin2num');
@@ -559,6 +555,7 @@ class ScriptInterpreter {
       'checkSigVerify': async () => await this.op_checksigverify(),
       'checkMultiSig': async () => await this.op_checkmultisig(),
       'checkMultiSigVerify': async () => await this.op_checkmultisigverify(),
+      'checkPreimage': async () => await this.op_checkpreimage(),
       'checkDataSig': async () => await this.op_checkdatasig(),
       'checkDataSigVerify': async () => await this.op_checkdatasigverify(),
     };
@@ -1310,6 +1307,51 @@ class ScriptInterpreter {
     }
   }
 
+  // checkPreimage is not a single opcode. The compiler emits the OP_PUSH_TX
+  // binding for it: 428 bytes that derive a signature from hash256(preimage)
+  // in script and check it with OP_CHECKSIGVERIFY, so the preimage on the
+  // stack has to be the one the node is signing. The simulator runs it as one
+  // step and checks the same thing directly. The binding consumes nothing and
+  // leaves the preimage where it found it.
+  async op_checkpreimage() {
+    if (this.mainStack.length < 1) {
+      throw new Error('checkPreimage requires the preimage on the stack');
+    }
+
+    const preimageHex = this.toHexString(this.mainStack[this.mainStack.length - 1]);
+
+    if (this.txContextMode !== 'transaction') {
+      this.addHistory('checkPreimage', 'Preimage NOT verified: no transaction context');
+      console.warn('checkPreimage: no transaction context, so the preimage was not verified. ' +
+        'On chain the binding would reject a preimage that does not match the spending transaction.');
+      return;
+    }
+
+    // The binding pins the sighash type to ALL|FORKID, so the signed message
+    // is always BIP-143 over the whole locking script being spent.
+    const result = await window.bsv.computeSighash(
+      this.txContext.txHex,
+      this.txContext.inputIndex,
+      this.txContext.prevScriptHex,
+      this.txContext.satoshis,
+      ScriptInterpreter.SIGHASH_ALL_FORKID
+    );
+    if (!result.success) {
+      throw new Error(`checkPreimage: failed to compute sighash: ${result.error}`);
+    }
+
+    const actual = (await window.bsv.hash256('0x' + preimageHex)).toLowerCase();
+    const expected = result.sighash.toLowerCase();
+    if (actual !== expected) {
+      throw new Error(
+        `checkPreimage failed: the preimage on the stack hashes to ${actual}, ` +
+        `but the transaction being spent signs ${expected}`
+      );
+    }
+
+    this.addHistory('checkPreimage', 'Preimage matches the transaction being spent');
+  }
+
   async op_checkmultisigverify() {
     await this.op_checkmultisig();
     this.op_verify();
@@ -1345,6 +1387,9 @@ class ScriptInterpreter {
     this.op_verify();
   }
 }
+
+// SIGHASH_ALL | SIGHASH_FORKID, the type the OP_PUSH_TX binding pins
+ScriptInterpreter.SIGHASH_ALL_FORKID = 0x41;
 
 // Export for use in app
 if (typeof module !== 'undefined' && module.exports) {

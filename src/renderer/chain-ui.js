@@ -255,7 +255,7 @@ async function prepareChainRun() {
       return null;
     }
 
-    // Build initial stack (bottom to top): [method_params..., preimage, k1_sig]
+    // Build initial stack (bottom to top): [method_params..., preimage]
     var initialStack = [];
 
     // Add method parameter values
@@ -273,11 +273,20 @@ async function prepareChainRun() {
       }
     }
 
-    // Add preimage and k=1 signature. checkPreimage expands to
-    // `codeSeparator <G> checkSigVerify`, which pops the pubkey then the
-    // signature, so the signature must be on top and the preimage below it.
+    // Add the preimage. checkPreimage compiles to the OP_PUSH_TX binding,
+    // which derives its own signature from the preimage and leaves the
+    // preimage in place. The spender supplies nothing but the preimage.
     initialStack.push('0x' + preimageResult.preimageHex);
-    initialStack.push('0x' + preimageResult.sigHex);
+
+    // Give the interpreter the transaction it is spending, so checkPreimage
+    // checks the preimage against the real sighash rather than waving it
+    // through.
+    interpreter.setTransactionContext({
+      txHex: txResult.txHex,
+      inputIndex: 0,
+      prevScriptHex: prep.prevUtxo.lockingScript,
+      satoshis: prep.prevUtxo.satoshis
+    });
 
     return {
       methodName: methodName,

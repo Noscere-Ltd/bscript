@@ -15,16 +15,17 @@ const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest();
 test('the hash opcodes match node crypto on the same bytes', async () => {
   const bytes = Buffer.from('deadbeef', 'hex');
 
+  // A digest is bytes, so it comes back 0x-prefixed like any other byte item
   assert.strictEqual(await top('sha256', ['0xdeadbeef']),
-    sha256(bytes).toString('hex'));
+    '0x' + sha256(bytes).toString('hex'));
   assert.strictEqual(await top('sha1', ['0xdeadbeef']),
-    crypto.createHash('sha1').update(bytes).digest('hex'));
+    '0x' + crypto.createHash('sha1').update(bytes).digest('hex'));
   assert.strictEqual(await top('ripemd160', ['0xdeadbeef']),
-    crypto.createHash('ripemd160').update(bytes).digest('hex'));
+    '0x' + crypto.createHash('ripemd160').update(bytes).digest('hex'));
   assert.strictEqual(await top('hash256', ['0xdeadbeef']),
-    sha256(sha256(bytes)).toString('hex'));
+    '0x' + sha256(sha256(bytes)).toString('hex'));
   assert.strictEqual(await top('hash160', ['0xdeadbeef']),
-    crypto.createHash('ripemd160').update(sha256(bytes)).digest('hex'));
+    '0x' + crypto.createHash('ripemd160').update(sha256(bytes)).digest('hex'));
 });
 
 test('hash opcodes consume their operand', async () => {
@@ -34,7 +35,7 @@ test('hash opcodes consume their operand', async () => {
 
 test('hash160 is ripemd160 of sha256', async () => {
   const once = await top('sha256', ['0xdeadbeef']);
-  const twice = await top('ripemd160', ['0x' + once]);
+  const twice = await top('ripemd160', [once]);
   assert.strictEqual(await top('hash160', ['0xdeadbeef']), twice);
 });
 

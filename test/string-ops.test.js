@@ -80,7 +80,7 @@ test('hash opcodes hash the bytes of a hex item, not its text', async () => {
   const expected = crypto.createHash('sha256')
     .update(crypto.createHash('sha256').update(Buffer.from('deadbeef', 'hex')).digest())
     .digest('hex');
-  assert.strictEqual(await top('hash256', ['0xdeadbeef']), expected);
+  assert.strictEqual(await top('hash256', ['0xdeadbeef']), '0x' + expected);
 });
 
 test('toHashBuffer decodes hex items and leaves text alone', () => {

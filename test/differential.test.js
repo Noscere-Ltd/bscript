@@ -79,7 +79,9 @@ const CORPUS = {
 
   hashing: [
     '0xabcd sha256', '0xabcd sha1', '0xabcd ripemd160',
-    '0xabcd hash256', '0xabcd hash160', '0xaabbccddeeff hash160'
+    '0xabcd hash256', '0xabcd hash160', '0xaabbccddeeff hash160',
+    // Numbers are hashed as the bytes their script encoding uses, not as text
+    '5 sha256', '0 sha256', '-1 sha256', '300 hash160', '2 3 add sha256'
   ],
 
   // Both engines must reject these. The wording differs between them, so only

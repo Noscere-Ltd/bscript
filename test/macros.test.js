@@ -32,7 +32,7 @@ test('xRot_n rotates the nth item to the top', async () => {
 test('hashCat hashes a copy and concatenates it', async () => {
   assert.strictEqual(expand('hashCat'), 'dup sha256 swap cat');
   const hashed = await top('sha256', ['0xdead']);
-  assert.strictEqual(await top('hashCat', ['0xdead']), '0x' + hashed + 'dead');
+  assert.strictEqual(await top('hashCat', ['0xdead']), hashed + 'dead');
 });
 
 test('checkPreimage is not expanded: it compiles to the binding', () => {

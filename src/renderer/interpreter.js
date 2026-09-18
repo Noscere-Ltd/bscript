@@ -1165,45 +1165,36 @@ class ScriptInterpreter {
     this.addHistory('size', `Size: ${size} bytes`);
   }
 
-  // Crypto operations using BSV SDK via IPC
+  // Crypto operations using BSV SDK via IPC.
+  //
+  // The stack item is bytes, so it goes to the handler as 0x-prefixed hex and
+  // the digest comes back prefixed too. Passing String(item) hashed the number
+  // 5 as the text "5".
+  async hashOp(name, label) {
+    const hex = this.toHexString(this.popStack());
+    const hash = await window.bsv[name]('0x' + hex);
+    this.pushStack('0x' + hash);
+    this.addHistory(name, `${label} of 0x${hex}`);
+  }
+
   async op_ripemd160() {
-    const data = this.popStack();
-    const dataStr = typeof data === 'string' ? data : String(data);
-    const hash = await window.bsv.ripemd160(dataStr);
-    this.pushStack(hash);
-    this.addHistory('ripemd160', `RIPEMD160 hash of "${dataStr}"`);
+    await this.hashOp('ripemd160', 'RIPEMD160 hash');
   }
 
   async op_sha1() {
-    const data = this.popStack();
-    const dataStr = typeof data === 'string' ? data : String(data);
-    const hash = await window.bsv.sha1(dataStr);
-    this.pushStack(hash);
-    this.addHistory('sha1', `SHA1 hash of "${dataStr}"`);
+    await this.hashOp('sha1', 'SHA1 hash');
   }
 
   async op_sha256() {
-    const data = this.popStack();
-    const dataStr = typeof data === 'string' ? data : String(data);
-    const hash = await window.bsv.sha256(dataStr);
-    this.pushStack(hash);
-    this.addHistory('sha256', `SHA256 hash of "${dataStr}"`);
+    await this.hashOp('sha256', 'SHA256 hash');
   }
 
   async op_hash160() {
-    const data = this.popStack();
-    const dataStr = typeof data === 'string' ? data : String(data);
-    const hash = await window.bsv.hash160(dataStr);
-    this.pushStack(hash);
-    this.addHistory('hash160', `HASH160 (RIPEMD160(SHA256)) of "${dataStr}"`);
+    await this.hashOp('hash160', 'HASH160 (RIPEMD160(SHA256))');
   }
 
   async op_hash256() {
-    const data = this.popStack();
-    const dataStr = typeof data === 'string' ? data : String(data);
-    const hash = await window.bsv.hash256(dataStr);
-    this.pushStack(hash);
-    this.addHistory('hash256', `HASH256 (double SHA256) of "${dataStr}"`);
+    await this.hashOp('hash256', 'HASH256 (double SHA256)');
   }
 
   async op_checksig() {

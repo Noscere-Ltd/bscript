@@ -332,11 +332,15 @@ async function runChainTransition() {
   if (result.success) {
     logToConsole('Transition succeeded!', 'success');
     logToConsole('Final stack: [' + interpreter.mainStack.join(', ') + ']', 'info');
+    logToConsole('Simulated: this transaction pays no fee and its txid ' +
+      run.txid.substring(0, 16) + '... is provisional until it is signed and broadcast',
+      'warning');
 
     chainEngine.advanceChain(run.methodName, run.newState, run.txid);
 
     if (run.isTerminal) {
-      logToConsole('Chain terminated (terminal method)', 'warning');
+      logToConsole('Chain terminated (terminal method), so this transaction ' +
+        'carries no output at all', 'warning');
     } else {
       logToConsole('State after transition: ' + JSON.stringify(chainEngine.currentState), 'info');
     }

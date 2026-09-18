@@ -116,21 +116,16 @@ ChainEngine.prototype.buildLockingScript = function(stateValues) {
   return this.contractHex + '6a' + stateHex;
 };
 
-// Get code portion (everything before OP_RETURN) from a locking script
-ChainEngine.prototype.getCodePortion = function(lockingScriptHex) {
-  // Walk the script as opcodes to find OP_RETURN (0x6a)
-  var bytes = hexToBytes(lockingScriptHex);
+// Walk a script opcode by opcode, stepping over push data, and hand each
+// opcode and its offset to visit. A byte inside a push is not an opcode, so
+// scanning for one without this finds the wrong thing.
+function forEachOpcode(bytes, visit) {
   var i = 0;
 
   while (i < bytes.length) {
     var op = bytes[i];
+    visit(op, i);
 
-    // OP_RETURN
-    if (op === 0x6a) {
-      return bytesToHex(bytes.slice(0, i));
-    }
-
-    // Push data: skip over the data
     if (op >= 0x01 && op <= 0x4b) {
       i += 1 + op;
     } else if (op === 0x4c) { // OP_PUSHDATA1
@@ -138,41 +133,40 @@ ChainEngine.prototype.getCodePortion = function(lockingScriptHex) {
       i += 2 + bytes[i + 1];
     } else if (op === 0x4d) { // OP_PUSHDATA2
       if (i + 2 >= bytes.length) break;
-      var len = bytes[i + 1] | (bytes[i + 2] << 8);
-      i += 3 + len;
+      i += 3 + (bytes[i + 1] | (bytes[i + 2] << 8));
+    } else if (op === 0x4e) { // OP_PUSHDATA4
+      if (i + 4 >= bytes.length) break;
+      i += 5 + ((bytes[i + 1] | (bytes[i + 2] << 8) | (bytes[i + 3] << 16) |
+        (bytes[i + 4] << 24)) >>> 0);
     } else {
       i++;
     }
   }
+}
 
-  // No OP_RETURN found, return full script
-  return lockingScriptHex;
+// Get the code portion of a locking script: everything before the OP_RETURN
+// that separates the code from the state. buildLockingScript appends that
+// OP_RETURN last, so it is the last one, and a contract is free to use an
+// earlier OP_RETURN of its own.
+ChainEngine.prototype.getCodePortion = function(lockingScriptHex) {
+  var bytes = hexToBytes(lockingScriptHex);
+  var lastReturn;
+
+  forEachOpcode(bytes, function(op, index) {
+    if (op === 0x6a) lastReturn = index;
+  });
+
+  if (lastReturn === undefined) return lockingScriptHex;
+  return bytesToHex(bytes.slice(0, lastReturn));
 };
 
-// Find OP_CODESEPARATOR offset in the locking script
+// Find the last OP_CODESEPARATOR offset in the locking script
 ChainEngine.prototype.findCodeSeparator = function(lockingScriptHex) {
-  var bytes = hexToBytes(lockingScriptHex);
-  var i = 0;
-  var lastSep = undefined;
+  var lastSep;
 
-  while (i < bytes.length) {
-    var op = bytes[i];
-    if (op === 0xab) { // OP_CODESEPARATOR
-      lastSep = i;
-    }
-    if (op >= 0x01 && op <= 0x4b) {
-      i += 1 + op;
-    } else if (op === 0x4c) {
-      if (i + 1 >= bytes.length) break;
-      i += 2 + bytes[i + 1];
-    } else if (op === 0x4d) {
-      if (i + 2 >= bytes.length) break;
-      var len = bytes[i + 1] | (bytes[i + 2] << 8);
-      i += 3 + len;
-    } else {
-      i++;
-    }
-  }
+  forEachOpcode(hexToBytes(lockingScriptHex), function(op, index) {
+    if (op === 0xab) lastSep = index;
+  });
 
   return lastSep;
 };

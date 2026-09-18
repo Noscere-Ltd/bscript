@@ -16,6 +16,7 @@ let currentView = 'script'; // 'script', 'hex', 'asm'
 let settings = {
   enableSignatures: false,
   network: 'mainnet',
+  txVersion: 1,
   aiProvider: 'claude',
   aiApiKey: '',
   aiModel: ''
@@ -186,6 +187,9 @@ function setupEventHandlers() {
   document.getElementById('enable-signatures').addEventListener('change', toggleSignatures);
   document.querySelectorAll('input[name="network"]').forEach(radio => {
     radio.addEventListener('change', changeNetwork);
+  });
+  document.querySelectorAll('input[name="tx-version"]').forEach(radio => {
+    radio.addEventListener('change', changeTxVersion);
   });
 
   // Transaction context event listeners
@@ -373,8 +377,17 @@ async function stepScript() {
 
   if (executionMode === 'stepping') {
     if (interpreter.ip >= interpreter.instructions.length) {
-      logToConsole('Script execution completed', 'success');
-      logToConsole(`Final stack: [${interpreter.mainStack.join(', ')}]`, 'info');
+      // Stepping past the last instruction is where the interpreter applies
+      // the clean-stack and truthiness rules, so let it answer here too
+      try {
+        await interpreter.step();
+        logToConsole('Script execution completed', 'success');
+        logToConsole(`Final stack: [${interpreter.mainStack.join(', ')}]`, 'info');
+      } catch (error) {
+        logToConsole(`Error: ${error.message}`, 'error');
+        showErrorToast(interpreter.error || error.message,
+          interpreter.errorInstruction || 'unknown', interpreter.errorLine);
+      }
       executionMode = 'idle';
       updateUI();
       return;
@@ -958,6 +971,18 @@ function changeNetwork(event) {
   }
 
   logToConsole(`Network changed to: ${settings.network}`, 'info');
+}
+
+// Transaction version decides the strict rules, so the interpreter needs it
+function changeTxVersion(event) {
+  settings.txVersion = Number(event.target.value);
+
+  if (interpreter) {
+    interpreter.txVersion = settings.txVersion;
+  }
+
+  logToConsole(`Transaction version set to ${settings.txVersion} ` +
+    `(${settings.txVersion > 1 ? 'relaxed' : 'strict'} rules)`, 'info');
 }
 
 // Transaction context functions

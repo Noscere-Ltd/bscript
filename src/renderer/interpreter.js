@@ -25,10 +25,20 @@ class ScriptInterpreter {
     // Settings (preserved across resets)
     if (!this.enableSignatures) this.enableSignatures = false;
     if (!this.network) this.network = 'mainnet';
+    if (!this.txVersion) this.txVersion = 1;
+    // The opcode tests and the differential harness drive the script to the
+    // end and read the stack, the same way Spend.step() is used without
+    // Spend.validate(). They turn this off; the app never does.
+    if (this.applyFinalRules === undefined) this.applyFinalRules = true;
 
     // Transaction context for signature verification (preserved across resets)
     if (!this.txContext) this.txContext = null;
     if (!this.txContextMode) this.txContextMode = null;
+  }
+
+  // Version 2 and above relax the strict rules, the same test Spend makes
+  isRelaxed() {
+    return this.txVersion > 1;
   }
 
   // Set transaction context for checkSig/checkMultiSig verification
@@ -368,12 +378,30 @@ class ScriptInterpreter {
         throw new Error(`Script ended with ${this.condStack.length} unclosed if block(s)`);
       }
 
+      if (this.applyFinalRules) this.checkFinalStack();
+
       this.status = 'success';
       return { success: true, stack: this.mainStack };
     } catch (error) {
       this.status = 'error';
       this.error = error.message;
       return { success: false, error: error.message };
+    }
+  }
+
+  // The verdict Spend.validate() reaches once the script has run: something
+  // must be left, it must be true, and under the strict rules it must be the
+  // only thing left.
+  checkFinalStack() {
+    if (this.mainStack.length === 0) {
+      throw new Error('Script failed: the stack is empty at the end of the script');
+    }
+    if (!this.isRelaxed() && this.mainStack.length !== 1) {
+      throw new Error(`Script failed: ${this.mainStack.length} items left on the stack, ` +
+        'and version 1 requires exactly one (clean stack)');
+    }
+    if (!this.toBool(this.mainStack[this.mainStack.length - 1])) {
+      throw new Error('Script failed: the top stack item is false');
     }
   }
 
@@ -384,6 +412,15 @@ class ScriptInterpreter {
         this.status = 'error';
         this.error = `Script ended with ${this.condStack.length} unclosed if block(s)`;
         throw new Error(this.error);
+      }
+      if (this.applyFinalRules) {
+        try {
+          this.checkFinalStack();
+        } catch (error) {
+          this.status = 'error';
+          this.error = error.message;
+          throw error;
+        }
       }
       this.status = 'success';
       return false;
@@ -596,10 +633,25 @@ class ScriptInterpreter {
     if (typeof value === 'number') return value;
     if (typeof value === 'boolean') return value ? 1 : 0;
     if (typeof value === 'string') {
-      if (this.isHexValue(value)) return this.hexToNum(value.slice(2));
+      if (this.isHexValue(value)) {
+        const hex = value.slice(2);
+        if (!this.isRelaxed()) this.requireMinimalNumber(hex);
+        return this.hexToNum(hex);
+      }
       if (/^-?\d+$/.test(value.trim())) return parseInt(value, 10);
     }
     throw new Error(`Cannot convert '${value}' to a number`);
+  }
+
+  // Under the strict rules a number may not carry a byte it does not need:
+  // the last byte can only be 0x00 or 0x80 when the byte before it needs the
+  // sign bit. Empty is zero. Mirrors BigNumber.fromScriptNum(_, true).
+  requireMinimalNumber(hex) {
+    const byteCount = hex.length / 2;
+    if (byteCount === 0) return;
+    if ((parseInt(hex.slice(-2), 16) & 0x7f) !== 0) return;
+    if (byteCount > 1 && (parseInt(hex.slice(-4, -2), 16) & 0x80) !== 0) return;
+    throw new Error('non-minimally encoded script number');
   }
 
   // Convert stack value to boolean. Bytes are false when every byte is zero,
@@ -911,8 +963,9 @@ class ScriptInterpreter {
   }
 
   op_not() {
-    const a = this.toBool(this.popStack());
-    this.pushStack(!a ? 1 : 0);
+    // Numeric in the SDK, not a truthiness test, so it decodes like 0notEqual
+    const a = this.toNumber(this.popStack());
+    this.pushStack(a === 0 ? 1 : 0);
     this.addHistory('not', `Boolean NOT`);
   }
 

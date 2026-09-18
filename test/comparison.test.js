@@ -51,6 +51,8 @@ test('numEqual and equal disagree on encoding, as they should', async () => {
   assert.strictEqual(await top('equal', ['0x01', '0x0001']), 0);
   // But 0x0100 and the number 1 are the same value with different padding:
   // numEqual sees 1 == 1, equal sees different bytes.
-  assert.strictEqual(await top('numEqual', ['0x0100', 1]), 1);
+  // 0x0100 is non-minimal, so numEqual only accepts it at version 2. equal
+  // compares bytes and never decodes a number, so it takes it at either.
+  assert.strictEqual(await top('numEqual', ['0x0100', 1], 2), 1);
   assert.strictEqual(await top('equal', ['0x0100', 1]), 0);
 });

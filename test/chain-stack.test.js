@@ -12,7 +12,7 @@ const PREIMAGE_HEX = '0200000' + '0'.repeat(9);
 
 // chain-ui.js is a renderer script with no exports. Load it with stubs for the
 // globals it reaches for, and hand back the functions under test.
-function loadChainUi({ params = [], paramValues = {}, interpreter = null } = {}) {
+function loadChainUi({ params = [], paramValues = {}, interpreter = null, txVersion = 1 } = {}) {
   const src = fs.readFileSync(path.join(SRC, 'chain-ui.js'), 'utf8');
 
   const method = { name: 'increment', params, terminal: false };
@@ -40,9 +40,13 @@ function loadChainUi({ params = [], paramValues = {}, interpreter = null } = {})
     querySelectorAll: () => params.map((p) => ({ dataset: { param: p.name }, value: paramValues[p.name] || '' }))
   };
 
+  const built = {};
   const window = {
     electronAPI: {
-      buildChainTx: async () => ({ success: true, txid: 'cd'.repeat(32), txHex: '00' })
+      buildChainTx: async (params) => {
+        Object.assign(built, params);
+        return { success: true, txid: 'cd'.repeat(32), txHex: '00' };
+      }
     },
     runar: {
       computePreimage: async () => ({ success: true, preimageHex: PREIMAGE_HEX })
@@ -51,18 +55,22 @@ function loadChainUi({ params = [], paramValues = {}, interpreter = null } = {})
 
   const factory = new Function(
     'ChainEngine', 'document', 'window', 'logToConsole', 'editor', 'interpreter', 'updateUI',
+    'settings',
     `${src}\nreturn { prepareChainRun, collectNewState };`
   );
 
-  return factory(
+  const api = factory(
     function ChainEngine() { return engine; },
     document,
     window,
     () => {},
     { getValue: () => '', setValue: () => {} },
     interpreter || { setTransactionContext: () => {}, run: async () => ({ success: true }), reset: () => {} },
-    () => {}
+    () => {},
+    { txVersion }
   );
+
+  return Object.assign(api, { built });
 }
 
 test('chain mode pushes the preimage and nothing else', async () => {
@@ -74,6 +82,18 @@ test('chain mode pushes the preimage and nothing else', async () => {
   assert.deepStrictEqual(run.initialStack, ['0x' + PREIMAGE_HEX]);
   assert.strictEqual(run.txid, 'cd'.repeat(32));
   assert.deepStrictEqual(run.newState, { count: 1 });
+});
+
+test('the transaction is built at the version the settings ask for', async () => {
+  // The version decides the rule set the spend is judged under, so a chain
+  // run built at the wrong version proves nothing.
+  const strict = loadChainUi();
+  await strict.prepareChainRun();
+  assert.strictEqual(strict.built.version, 1);
+
+  const relaxed = loadChainUi({ txVersion: 2 });
+  await relaxed.prepareChainRun();
+  assert.strictEqual(relaxed.built.version, 2);
 });
 
 test('method parameters sit below the preimage', async () => {

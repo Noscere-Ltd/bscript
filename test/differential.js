@@ -11,15 +11,15 @@
 // the two engines agree on what the opcodes did.
 
 const { Spend, LockingScript, UnlockingScript } = require('@bsv/sdk');
-const { ScriptInterpreter, compileInstructionsToHex } = require('./helpers');
+const { ScriptInterpreter, opcodeInterpreter, compileInstructionsToHex } = require('./helpers');
 
 const toHex = (bytes) => Buffer.from(bytes).toString('hex');
 
 // Run the script under test/renderer/interpreter.js. Returns the final stack
 // as hex, and the token stream, which is what gets compiled for the oracle so
 // both engines see the same program after macro expansion.
-async function simulate(script, initialStack) {
-  const interp = new ScriptInterpreter();
+async function simulate(script, initialStack, txVersion = 1) {
+  const interp = opcodeInterpreter(txVersion);
   let result;
   try {
     result = await interp.run(script, initialStack);
@@ -37,13 +37,13 @@ async function simulate(script, initialStack) {
 
 // Run the compiled script under @bsv/sdk's Spend. The initial stack goes in
 // the unlocking script, which is where a spend actually supplies it.
-function reference(lockingHex, unlockingHex) {
-  const spend = new Spend({
+function makeSpend(lockingHex, unlockingHex, txVersion) {
+  return new Spend({
     sourceTXID: '00'.repeat(32),
     sourceOutputIndex: 0,
     sourceSatoshis: 1,
     lockingScript: LockingScript.fromHex(lockingHex),
-    transactionVersion: 1,
+    transactionVersion: txVersion,
     otherInputs: [],
     outputs: [],
     inputIndex: 0,
@@ -51,6 +51,10 @@ function reference(lockingHex, unlockingHex) {
     inputSequence: 0xffffffff,
     lockTime: 0
   });
+}
+
+function reference(lockingHex, unlockingHex, txVersion = 1) {
+  const spend = makeSpend(lockingHex, unlockingHex, txVersion);
 
   try {
     while (spend.step()) {
@@ -68,19 +72,48 @@ function reference(lockingHex, unlockingHex) {
   }
 }
 
+// The verdict Spend.validate() reaches: the same execution, plus the clean
+// stack and truthiness rules the harness above leaves out on purpose. Only
+// the accept or reject answer is compared, not the wording.
+function referenceVerdict(lockingHex, unlockingHex, txVersion = 1) {
+  try {
+    makeSpend(lockingHex, unlockingHex, txVersion).validate();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+// Same script through interpreter.run(), which applies those rules itself.
+async function compareVerdict(script, initialStack = [], txVersion = 1) {
+  const interp = new ScriptInterpreter();
+  interp.txVersion = txVersion;
+  const result = await interp.run(script, initialStack);
+  const sim = result.success ? { ok: true } : { ok: false, error: result.error };
+
+  const ref = referenceVerdict(
+    compileInstructionsToHex(interp.instructions),
+    compileInstructionsToHex(initialStack.map(String)),
+    txVersion
+  );
+
+  return { agree: sim.ok === ref.ok, sim, ref };
+}
+
 // Compare the two engines on one script. Returns { agree, sim, ref }.
 //
 // The engines' error messages are their own wording, so a script both engines
 // reject counts as agreement. What matters is that neither accepts a script
 // the other rejects, and that accepted scripts leave the same stack.
-async function compare(script, initialStack = []) {
-  const sim = await simulate(script, initialStack);
+async function compare(script, initialStack = [], txVersion = 1) {
+  const sim = await simulate(script, initialStack, txVersion);
 
   let ref;
   try {
     ref = reference(
       compileInstructionsToHex(sim.tokens),
-      compileInstructionsToHex(initialStack.map(String))
+      compileInstructionsToHex(initialStack.map(String)),
+      txVersion
     );
   } catch (err) {
     ref = { ok: false, error: `compile failed: ${err.message}` };
@@ -98,4 +131,7 @@ function explain(script, { sim, ref }) {
   return `${script}\n  interpreter: ${show(sim)}\n  @bsv/sdk:    ${show(ref)}`;
 }
 
-module.exports = { compare, explain, simulate, reference, compileInstructionsToHex };
+module.exports = {
+  compare, compareVerdict, explain, simulate, reference, referenceVerdict,
+  compileInstructionsToHex
+};

@@ -113,6 +113,29 @@
           </div>
         </div>
 
+        <div class="settings-section">
+          <h3>Transaction Version</h3>
+          <p class="settings-description">
+            Version 1 is the strict rule set: minimal number encoding and
+            exactly one truthy item left on the stack. Version 2 and above
+            relax both.
+          </p>
+          <div class="settings-option">
+            <label class="radio-option">
+              <input type="radio" name="tx-version" value="1" checked />
+              <span class="radio-label">Version 1</span>
+              <span class="radio-description">Strict</span>
+            </label>
+          </div>
+          <div class="settings-option">
+            <label class="radio-option">
+              <input type="radio" name="tx-version" value="2" />
+              <span class="radio-label">Version 2</span>
+              <span class="radio-description">Relaxed</span>
+            </label>
+          </div>
+        </div>
+
         <div class="settings-section" id="network-settings" style="display: none;">
           <h3>Bitcoin Network</h3>
           <p class="settings-description">

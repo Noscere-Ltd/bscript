@@ -17,19 +17,12 @@
 //
 // Click "Verify" to cross-check against Rúnar's ScriptVM!
 
-// Duplicate the secret to keep it for later use
-dup
-
 // Hash the secret
 sha256
 
-// Push the expected hash
-// SHA256("42") - computed by the script creator
-// (In simulated mode, the hash of the number 42)
-dup sha256
+// Push the expected hash, which the script creator computed in advance:
+// SHA256 of the script encoding of 42, which is the single byte 0x2a
+0x684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1
 
-// Check if hashes match
+// Check if hashes match. The stack is left holding that one answer.
 equal
-
-// The stack now contains: [secret, true/false]
-// In a real contract you'd use equalVerify instead of equal

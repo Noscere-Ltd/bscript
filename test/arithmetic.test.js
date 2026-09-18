@@ -52,9 +52,18 @@ test('not and 0notEqual reduce to 1 or 0', async () => {
 });
 
 test('not and 0notEqual read all-zero bytes as false', async () => {
-  assert.strictEqual(await top('not', ['0x00']), 1);
-  assert.strictEqual(await top('0notEqual', ['0x00']), 0);
+  // 0x00 is a non-minimal zero, so it only reaches an arithmetic opcode
+  // under the relaxed rules of version 2.
+  assert.strictEqual(await top('not', ['0x00'], 2), 1);
+  assert.strictEqual(await top('0notEqual', ['0x00'], 2), 0);
   assert.strictEqual(await top('0notEqual', ['0x01']), 1);
+});
+
+test('version 1 rejects a non-minimally encoded number', async () => {
+  assert.match(await failure('not', ['0x00']), /non-minimally encoded script number/);
+  assert.match(await failure('1add', ['0x0100']), /non-minimally encoded script number/);
+  // The sign byte is allowed when the byte before it needs it
+  assert.strictEqual(await top('1add', ['0xff00']), 256);
 });
 
 test('1add and 1sub', async () => {

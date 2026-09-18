@@ -818,11 +818,12 @@ ipcMain.handle('load-chain-project', async (event, filePath) => {
   }
 });
 
-ipcMain.handle('build-chain-tx', async (event, { prevTxid, prevVout, prevSatoshis, prevLockingScript, newLockingScript, newSatoshis }) => {
+ipcMain.handle('build-chain-tx', async (event, { prevTxid, prevVout, prevSatoshis, prevLockingScript, newLockingScript, newSatoshis, version }) => {
   try {
     const { Transaction, LockingScript, UnlockingScript } = getBsvSdk();
 
-    const tx = new Transaction();
+    // The version decides which rule set the spend is judged under
+    const tx = new Transaction(version || 1);
 
     // Add input (spending the previous UTXO)
     tx.addInput({

@@ -247,7 +247,8 @@ async function prepareChainRun() {
       prevSatoshis: prep.prevUtxo.satoshis,
       prevLockingScript: prep.prevUtxo.lockingScript,
       newLockingScript: prep.newLockingScript,
-      newSatoshis: prep.newSatoshis
+      newSatoshis: prep.newSatoshis,
+      version: settings.txVersion
     });
 
     if (!txResult.success) {

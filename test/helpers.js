@@ -56,34 +56,44 @@ const PREIMAGE = '0x' + [
   '41000000'                           // sighash type = 65
 ].join('');
 
-// Run a script, asserting it succeeded, and return the interpreter.
-async function exec(script, initialStack = []) {
-  const assert = require('node:assert');
+// Build an interpreter for the opcode tests: it runs the script to the end
+// and stops there, leaving the clean-stack and truthiness verdict out of the
+// way. test/final-verdict.test.js covers that verdict on its own.
+function opcodeInterpreter(txVersion = 1) {
   const interp = new ScriptInterpreter();
+  interp.applyFinalRules = false;
+  interp.txVersion = txVersion;
+  return interp;
+}
+
+// Run a script, asserting it succeeded, and return the interpreter.
+async function exec(script, initialStack = [], txVersion = 1) {
+  const assert = require('node:assert');
+  const interp = opcodeInterpreter(txVersion);
   const result = await interp.run(script, initialStack);
   assert.ok(result.success, `script failed: ${result.error}`);
   return interp;
 }
 
 // Run a script and return its final stack.
-async function stack(script, initialStack = []) {
-  return (await exec(script, initialStack)).mainStack;
+async function stack(script, initialStack = [], txVersion = 1) {
+  return (await exec(script, initialStack, txVersion)).mainStack;
 }
 
 // Run a script and return the error it failed with, or null if it succeeded.
-async function failure(script, initialStack = []) {
-  const interp = new ScriptInterpreter();
+async function failure(script, initialStack = [], txVersion = 1) {
+  const interp = opcodeInterpreter(txVersion);
   const result = await interp.run(script, initialStack);
   return result.success ? null : result.error;
 }
 
 // Top of stack after running a script.
-async function top(script, initialStack = []) {
-  const items = await stack(script, initialStack);
+async function top(script, initialStack = [], txVersion = 1) {
+  const items = await stack(script, initialStack, txVersion);
   return items[items.length - 1];
 }
 
 module.exports = {
-  ScriptInterpreter, PREIMAGE, exec, stack, failure, top,
+  ScriptInterpreter, PREIMAGE, opcodeInterpreter, exec, stack, failure, top,
   compileInstructionsToHex, disassemble
 };

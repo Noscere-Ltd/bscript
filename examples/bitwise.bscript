@@ -1,4 +1,9 @@
 // Bitcoin Script Example: Bitwise Operations
+//
+// Transaction version: 2
+// It keeps every intermediate value on the stack to show the steps, and
+// version 1 requires exactly one item at the end.
+//
 // Demonstrates bitwise logic opcodes.
 // These operate on bytes, not on JavaScript-style 32-bit integers,
 // so they take and return byte strings. and/or/xor need operands of

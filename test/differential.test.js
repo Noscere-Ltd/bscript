@@ -7,7 +7,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { compare, explain } = require('./differential');
+const { compare, compareVerdict, explain } = require('./differential');
 
 const EXAMPLES = path.join(__dirname, '..', 'examples');
 
@@ -92,13 +92,34 @@ const CORPUS = {
   ]
 };
 
-for (const [family, scripts] of Object.entries(CORPUS)) {
-  for (const script of scripts) {
-    test(`${family}: ${script}`, async () => {
-      const result = await compare(script);
-      assert.ok(result.agree, explain(script, result));
-    });
+// The whole corpus runs at both transaction versions: version 1 is the strict
+// rule set, version 2 relaxes it, and the two engines must agree under each.
+for (const txVersion of [1, 2]) {
+  for (const [family, scripts] of Object.entries(CORPUS)) {
+    for (const script of scripts) {
+      test(`v${txVersion} ${family}: ${script}`, async () => {
+        const result = await compare(script, [], txVersion);
+        assert.ok(result.agree, explain(script, result));
+      });
+    }
   }
+}
+
+// Scripts whose verdict depends on the version: each one feeds a non-minimally
+// encoded number to a numeric opcode, which only version 2 allows.
+const VERSION_SENSITIVE = ['0x0100 1 add', '0x80 not', '0x0100 0x01 numEqual'];
+
+for (const script of VERSION_SENSITIVE) {
+  test(`version-sensitive: ${script}`, async () => {
+    const strict = await compare(script, [], 1);
+    assert.ok(strict.agree, explain(script, strict));
+    assert.strictEqual(strict.sim.ok, false, `${script} should be rejected at version 1`);
+    assert.match(strict.sim.error, /non-minimally encoded script number/);
+
+    const relaxed = await compare(script, [], 2);
+    assert.ok(relaxed.agree, explain(script, relaxed));
+    assert.strictEqual(relaxed.sim.ok, true, `${script} should run at version 2`);
+  });
 }
 
 // The shipped examples, which exercise longer sequences than the corpus does.
@@ -118,7 +139,7 @@ const EXAMPLE_CASES = [
 for (const name of EXAMPLE_CASES) {
   test(`example ${name}.bscript matches @bsv/sdk`, async () => {
     const script = fs.readFileSync(path.join(EXAMPLES, `${name}.bscript`), 'utf8');
-    const result = await compare(script);
+    const result = await compare(script, name === 'hash-puzzle' ? [42] : []);
     assert.ok(result.agree, explain(name, result));
   });
 }
@@ -133,3 +154,31 @@ test('return is a known divergence', async () => {
   assert.match(result.sim.error, /OP_RETURN/);
   assert.equal(result.ref.ok, true);
 });
+
+// The final verdict, which the harness above skips: Spend.validate() adds the
+// clean-stack and truthiness rules, and interpreter.run() applies its own copy
+// of them. Only the accept or reject answer is compared, not the wording.
+const VERDICTS = [
+  { script: '1', v1: true, v2: true },
+  { script: '5 4 sub', v1: true, v2: true },
+  { script: '0', v1: false, v2: false },
+  { script: '1 1 sub', v1: false, v2: false },
+  { script: '1 drop', v1: false, v2: false },
+  { script: '1 2', v1: false, v2: true },
+  { script: '1 2 3', v1: false, v2: true },
+  { script: '1 0', v1: false, v2: false },
+  { script: '0x00', v1: false, v2: false },
+  { script: '0x0080', v1: false, v2: false }
+];
+
+for (const { script, v1, v2 } of VERDICTS) {
+  for (const [txVersion, expected] of [[1, v1], [2, v2]]) {
+    test(`verdict v${txVersion}: ${script}`, async () => {
+      const result = await compareVerdict(script, [], txVersion);
+      assert.ok(result.agree,
+        `${script} at version ${txVersion}\n  interpreter: ${result.sim.error || 'valid'}` +
+        `\n  @bsv/sdk:    ${result.ref.error || 'valid'}`);
+      assert.strictEqual(result.sim.ok, expected);
+    });
+  }
+}

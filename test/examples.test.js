@@ -18,6 +18,13 @@ const read = (name) => fs.readFileSync(path.join(EXAMPLES, `${name}.bscript`), '
 // documentation cannot drift apart.
 const preimageFrom = (name) => read(name).match(/0x02000000[0-9a-f]+/)[0];
 
+// An example that deliberately leaves more than one item on the stack says so
+// in its header. Version 1 would reject it on the clean-stack rule.
+const versionOf = (name) => {
+  const declared = read(name).match(/^\/\/ Transaction version: (\d+)$/m);
+  return declared ? Number(declared[1]) : 1;
+};
+
 const CASES = [
   { name: 'alt-stack', stack: [], expect: [2450] },
   { name: 'arithmetic', stack: [], expect: [30, 100, 5, 6, 200, 25, 1] },
@@ -50,6 +57,7 @@ const CASES = [
 for (const { name, stack, expect } of CASES) {
   test(`${name}.bscript runs as documented`, async () => {
     const interp = new ScriptInterpreter();
+    interp.txVersion = versionOf(name);
     const initial = typeof stack === 'function' ? stack() : stack;
     const result = await interp.run(read(name), initial);
 
@@ -58,15 +66,20 @@ for (const { name, stack, expect } of CASES) {
   });
 }
 
-test('hash-puzzle.bscript compares the secret against a hash of its own hash', async () => {
-  // The example pushes `dup sha256` where a real contract would push a literal
-  // expected hash, so the comparison is always false. Documented here so the
-  // example and the interpreter cannot drift apart unnoticed.
+test('hash-puzzle.bscript is solved by the secret its header names', async () => {
   const interp = new ScriptInterpreter();
   const result = await interp.run(read('hash-puzzle'), [42]);
 
   assert.ok(result.success, result.error);
-  assert.deepStrictEqual(interp.mainStack, [42, 0]);
+  assert.deepStrictEqual(interp.mainStack, [1]);
+});
+
+test('hash-puzzle.bscript rejects a secret that is not 42', async () => {
+  const interp = new ScriptInterpreter();
+  const result = await interp.run(read('hash-puzzle'), [43]);
+
+  assert.strictEqual(result.success, false);
+  assert.match(result.error, /top stack item is false/);
 });
 
 test('p2pkh-checksig.bscript rejects a pubkey that is not the one it locks to', async () => {

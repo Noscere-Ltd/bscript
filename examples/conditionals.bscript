@@ -1,4 +1,9 @@
 // Bitcoin Script Example: Conditional Execution
+//
+// Transaction version: 2
+// It keeps every intermediate value on the stack to show the steps, and
+// version 1 requires exactly one item at the end.
+//
 // Demonstrates IF/ELSE/ENDIF control flow
 
 // Example 1: Simple IF statement

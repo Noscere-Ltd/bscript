@@ -53,9 +53,23 @@ test('checkDataSig is not a BSV opcode', async () => {
 
 test('checkMultiSig consumes the dummy, the sigs and the keys', async () => {
   // Stack, bottom to top: dummy, sig1, sig2, 2, key1, key2, key3, 3
-  const spent = ['0x00', '0xa1', '0xa2', 2, '0xb1', '0xb2', '0xb3', 3];
+  const spent = ['0x', '0xa1', '0xa2', 2, '0xb1', '0xb2', '0xb3', 3];
   assert.deepStrictEqual(await stack('checkMultiSig', spent), [1]);
-  assert.deepStrictEqual(await stack('checkMultiSigVerify 7', ['0x00', '0xa1', 1, '0xb1', 1]), [7]);
+  assert.deepStrictEqual(await stack('checkMultiSigVerify 7', ['0x', '0xa1', 1, '0xb1', 1]), [7]);
+});
+
+test('the multisig dummy must be empty under the strict rules', async () => {
+  const spent = ['0x00', '0xa1', 1, '0xb1', 1];
+  assert.match(await failure('checkMultiSig', spent), /dummy element to be empty/);
+  // Version 2 relaxes NULLDUMMY along with the rest
+  assert.deepStrictEqual(await stack('checkMultiSig', spent, 2), [1]);
+});
+
+test('an empty signature is false even in simulated mode', async () => {
+  // Simulated checkSig used to answer true for a signature that was not there
+  assert.deepStrictEqual(await stack('checkSig', ['0x', '0xbeef']), [0]);
+  assert.match(await failure('checkSigVerify', ['0x', '0xbeef']), /Verification failed/);
+  assert.deepStrictEqual(await stack('checkMultiSig', ['0x', '0x', 1, '0xb1', 1]), [0]);
 });
 
 test('signature opcodes demand a transaction context once signatures are on', async () => {
@@ -71,8 +85,8 @@ test('checkSig pops the pubkey before the signature', async () => {
   // signature, so the signature has to be the second item popped.
   const seen = [];
   const realVerify = window.bsv.verifySig;
-  window.bsv.verifySig = async (sigHex, sighash, pubKeyHex) => {
-    seen.push({ sigHex, pubKeyHex });
+  window.bsv.verifySig = async ({ signatureHex, pubKeyHex }) => {
+    seen.push({ sigHex: signatureHex, pubKeyHex });
     return { success: true, valid: true };
   };
 

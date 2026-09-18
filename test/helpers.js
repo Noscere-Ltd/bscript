@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { toHashBuffer } = require('../src/main/hash-input');
+const { verifySig, verifyMultiSig, sighashFor } = require('../src/main/signature');
 
 const digest = (algorithm) => async (data) =>
   crypto.createHash(algorithm).update(toHashBuffer(data)).digest('hex');
@@ -23,6 +24,20 @@ global.window = {
     hash160: async (data) => {
       const once = crypto.createHash('sha256').update(toHashBuffer(data)).digest();
       return crypto.createHash('ripemd160').update(once).digest('hex');
+    },
+    // The signature calls go to the same module the main process uses
+    verifySig: async (params) => verifySig(params),
+    verifyMultiSig: async (params) => verifyMultiSig(params),
+    computeSighash: async (txHex, inputIndex, prevScriptHex, satoshis, sighashType, subscriptHex) => {
+      try {
+        return {
+          success: true,
+          sighash: sighashFor(
+            { txHex, inputIndex, prevScriptHex, satoshis, subscriptHex }, sighashType || 0x41)
+        };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
     }
   }
 };
@@ -35,8 +50,11 @@ const ScriptInterpreter = require('../src/renderer/interpreter.js');
 const renderer = (name) =>
   fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', name), 'utf8');
 
+// The compiler goes on the global object, because interpreter.js reads it
+// there the way it does in the renderer, where both are global scripts.
 const { compileInstructionsToHex, disassemble } = new Function(
   renderer('push-tx-binding.js') + renderer('compiler.js') +
+  '\nglobalThis.compileInstructionsToHex = compileInstructionsToHex;' +
   '\nreturn { compileInstructionsToHex, disassemble };'
 )();
 

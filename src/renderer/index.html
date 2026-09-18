@@ -175,14 +175,17 @@
             <label class="radio-option">
               <input type="radio" name="tx-context-mode" value="sighash" checked />
               <span class="radio-label">Pre-computed Sighash</span>
-              <span class="radio-description">Provide 32-byte sighash hex directly (simplest)</span>
+              <span class="radio-description">Provide 32-byte sighash hex directly (simplest). The
+              signature's own sighash type cannot be honoured in this mode, so a signature made
+              under a different one still checks against this digest.</span>
             </label>
           </div>
           <div class="settings-option">
             <label class="radio-option">
               <input type="radio" name="tx-context-mode" value="transaction" />
               <span class="radio-label">Full Transaction</span>
-              <span class="radio-description">Provide spending tx and previous output details</span>
+              <span class="radio-description">Provide spending tx and previous output details. The
+              digest follows each signature's own sighash type.</span>
             </label>
           </div>
           <div class="settings-option">

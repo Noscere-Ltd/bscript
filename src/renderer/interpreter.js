@@ -21,6 +21,7 @@ class ScriptInterpreter {
     this.skipIPIncrement = false; // Flag to prevent double-increment in flow control
     this.condStack = []; // One entry per open if/notIf block: is that branch taken?
     this.namedImports = {}; // Store named imports for later expansion
+    this.lastCodeSeparator = null; // Instruction index of the last codeSeparator
 
     // Settings (preserved across resets)
     if (!this.enableSignatures) this.enableSignatures = false;
@@ -759,9 +760,9 @@ class ScriptInterpreter {
   }
 
   op_codeseparator() {
-    // No-op in the interpreter - OP_CODESEPARATOR only affects
-    // BIP-143 scriptCode computation which happens at the SDK level
-    this.addHistory('codeSeparator', 'Mark script code boundary (OP_CODESEPARATOR)');
+    this.lastCodeSeparator = this.ip;
+    this.addHistory('codeSeparator',
+      'Signatures from here on cover only the script after this point');
   }
 
   // Stack operations
@@ -1420,27 +1421,9 @@ class ScriptInterpreter {
         throw new Error('checkSig requires transaction context. Provide sighash or transaction details in Settings.');
       }
 
-      const sigHex = this.toHexString(signature);
-      const pubKeyHex = this.toHexString(pubKey);
-
-      let sighash;
-      if (this.txContextMode === 'sighash') {
-        sighash = this.txContext.sighash;
-      } else if (this.txContextMode === 'transaction') {
-        const result = await window.bsv.computeSighash(
-          this.txContext.txHex,
-          this.txContext.inputIndex,
-          this.txContext.prevScriptHex,
-          this.txContext.satoshis,
-          this.txContext.sighashType
-        );
-        if (!result.success) {
-          throw new Error(`Failed to compute sighash: ${result.error}`);
-        }
-        sighash = result.sighash;
-      }
-
-      const result = await window.bsv.verifySig(sigHex, sighash, pubKeyHex);
+      const result = await window.bsv.verifySig(this.signatureCheckParams(
+        this.toHexString(signature), this.toHexString(pubKey)
+      ));
 
       if (!result.success) {
         throw new Error(`checkSig error: ${result.error}`);
@@ -1449,10 +1432,42 @@ class ScriptInterpreter {
       this.pushStack(result.valid ? 1 : 0);
       this.addHistory('checkSig', `Verify signature: ${result.valid ? 'VALID' : 'INVALID'}`);
     } else {
-      // Simulated mode: always return true
-      this.pushStack(1);
-      this.addHistory('checkSig', 'Verify signature (simulated - always true)');
+      // Simulated mode: any signature passes except the empty one, which is
+      // how a script says "no signature here" and never verifies
+      const valid = this.toHexString(signature).length > 0;
+      this.pushStack(valid ? 1 : 0);
+      this.addHistory('checkSig', valid
+        ? 'Verify signature (simulated - always true)'
+        : 'Empty signature is false even in simulated mode');
     }
+  }
+
+  // What the main process needs to check a signature. In transaction mode the
+  // sighash is computed there, under the scope the signature itself carries.
+  signatureCheckParams(signatureHex, pubKeyHex) {
+    const params = { signatureHex, pubKeyHex, requireLowS: !this.isRelaxed() };
+
+    if (this.txContextMode === 'sighash') {
+      params.sighashHex = this.txContext.sighash;
+    } else {
+      params.txContext = {
+        txHex: this.txContext.txHex,
+        inputIndex: this.txContext.inputIndex,
+        prevScriptHex: this.txContext.prevScriptHex,
+        satoshis: this.txContext.satoshis
+      };
+
+      // A signature made after a codeSeparator covers only the script that
+      // follows it. ponytail: the SDK also deletes the signature itself from
+      // the subscript; a locking script that embeds its own signature is not
+      // something this simulator can produce.
+      if (this.lastCodeSeparator !== null) {
+        params.txContext.subscriptHex = compileInstructionsToHex(
+          this.instructions.slice(this.lastCodeSeparator + 1));
+      }
+    }
+
+    return params;
   }
 
   async op_checksigverify() {
@@ -1471,34 +1486,26 @@ class ScriptInterpreter {
     for (let i = 0; i < numSigs; i++) {
       sigs.push(this.popStack());
     }
-    this.popStack(); // Remove bug value (dummy element per Bitcoin protocol)
+
+    // The dummy element the original implementation pops. Under the strict
+    // rules it has to be empty (NULLDUMMY).
+    const dummy = this.popStack();
+    if (!this.isRelaxed() && this.toHexString(dummy).length > 0) {
+      throw new Error('checkMultiSig requires the dummy element to be empty');
+    }
 
     if (this.enableSignatures) {
       if (!this.txContext) {
         throw new Error('checkMultiSig requires transaction context. Provide sighash or transaction details in Settings.');
       }
 
-      const sigsHex = sigs.map(s => this.toHexString(s));
-      const pubKeysHex = pubKeys.map(p => this.toHexString(p));
+      const params = this.signatureCheckParams(null, null);
+      delete params.signatureHex;
+      delete params.pubKeyHex;
+      params.signaturesHex = sigs.map(s => this.toHexString(s));
+      params.pubKeysHex = pubKeys.map(p => this.toHexString(p));
 
-      let sighash;
-      if (this.txContextMode === 'sighash') {
-        sighash = this.txContext.sighash;
-      } else if (this.txContextMode === 'transaction') {
-        const result = await window.bsv.computeSighash(
-          this.txContext.txHex,
-          this.txContext.inputIndex,
-          this.txContext.prevScriptHex,
-          this.txContext.satoshis,
-          this.txContext.sighashType
-        );
-        if (!result.success) {
-          throw new Error(`Failed to compute sighash: ${result.error}`);
-        }
-        sighash = result.sighash;
-      }
-
-      const result = await window.bsv.verifyMultiSig(sigsHex, pubKeysHex, sighash);
+      const result = await window.bsv.verifyMultiSig(params);
 
       if (!result.success) {
         throw new Error(`checkMultiSig error: ${result.error}`);
@@ -1507,8 +1514,11 @@ class ScriptInterpreter {
       this.pushStack(result.valid ? 1 : 0);
       this.addHistory('checkMultiSig', `Verify ${numSigs} of ${numPubKeys} multisig: ${result.valid ? 'VALID' : 'INVALID'}`);
     } else {
-      this.pushStack(1); // Simplified: always return true
-      this.addHistory('checkMultiSig', `Verify ${numSigs} of ${numPubKeys} signatures (simulated - always true)`);
+      const valid = sigs.every(sig => this.toHexString(sig).length > 0);
+      this.pushStack(valid ? 1 : 0);
+      this.addHistory('checkMultiSig', valid
+        ? `Verify ${numSigs} of ${numPubKeys} signatures (simulated - always true)`
+        : 'An empty signature is false even in simulated mode');
     }
   }
 

@@ -40,12 +40,11 @@ contextBridge.exposeInMainWorld('bsv', {
   hash160: (data) => ipcRenderer.invoke('bsv-hash160', data),
 
   // Signature verification functions
-  verifySig: (signatureHex, sighashHex, pubKeyHex) =>
-    ipcRenderer.invoke('bsv-verify-sig', { signatureHex, sighashHex, pubKeyHex }),
-  computeSighash: (txHex, inputIndex, prevScriptHex, satoshis, sighashType) =>
-    ipcRenderer.invoke('bsv-compute-sighash', { txHex, inputIndex, prevScriptHex, satoshis, sighashType }),
-  verifyMultiSig: (signaturesHex, pubKeysHex, sighashHex) =>
-    ipcRenderer.invoke('bsv-verify-multisig', { signaturesHex, pubKeysHex, sighashHex })
+  verifySig: (params) => ipcRenderer.invoke('bsv-verify-sig', params),
+  computeSighash: (txHex, inputIndex, prevScriptHex, satoshis, sighashType, subscriptHex) =>
+    ipcRenderer.invoke('bsv-compute-sighash',
+      { txHex, inputIndex, prevScriptHex, satoshis, sighashType, subscriptHex }),
+  verifyMultiSig: (params) => ipcRenderer.invoke('bsv-verify-multisig', params)
 });
 
 // AI Assistant

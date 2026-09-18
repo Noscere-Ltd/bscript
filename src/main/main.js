@@ -288,133 +288,23 @@ ipcMain.handle('bsv-hash160', async (event, data) => {
 // IPC Handlers for BSV SDK signature verification
 // These run in the main process where Node modules are available
 
-// Verify signature with pre-computed sighash (for checkSig opcode)
-ipcMain.handle('bsv-verify-sig', async (event, { signatureHex, sighashHex, pubKeyHex }) => {
-  try {
-    const { PublicKey, Signature } = getBsvSdk();
+const { sighashFor, verifySig, verifyMultiSig } = require('./signature');
 
-    const pubKey = PublicKey.fromString(pubKeyHex);
+ipcMain.handle('bsv-verify-sig', async (event, params) => verifySig(params));
 
-    // Parse signature - may include trailing sighash type byte
-    const sigBytes = Buffer.from(signatureHex, 'hex');
-    let signature;
-
-    if (sigBytes.length > 0) {
-      // Check if last byte is sighash type (0x01-0x83 range)
-      const lastByte = sigBytes[sigBytes.length - 1];
-      if (lastByte >= 0x01 && lastByte <= 0x83) {
-        // Strip sighash byte for verification
-        const derBytes = sigBytes.slice(0, -1);
-        signature = Signature.fromDER(Array.from(derBytes));
-      } else {
-        signature = Signature.fromDER(signatureHex, 'hex');
-      }
-    } else {
-      signature = Signature.fromDER(signatureHex, 'hex');
-    }
-
-    // Convert sighash to array for verification
-    const sighashBytes = Array.from(Buffer.from(sighashHex, 'hex'));
-
-    // Verify signature
-    const isValid = signature.verify(sighashBytes, pubKey);
-
-    return { success: true, valid: isValid };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
+ipcMain.handle('bsv-verify-multisig', async (event, params) => verifyMultiSig(params));
 
 // Compute sighash from full transaction context
-ipcMain.handle('bsv-compute-sighash', async (event, { txHex, inputIndex, prevScriptHex, satoshis, sighashType }) => {
+ipcMain.handle('bsv-compute-sighash', async (event, { txHex, inputIndex, prevScriptHex, satoshis, sighashType, subscriptHex }) => {
   try {
-    const { Transaction, Script, TransactionSignature, Hash } = getBsvSdk();
+    const { TransactionSignature } = getBsvSdk();
+    const scope = sighashType ||
+      (TransactionSignature.SIGHASH_ALL | TransactionSignature.SIGHASH_FORKID);
 
-    // Parse the spending transaction
-    const tx = Transaction.fromHex(txHex);
-
-    // Parse the previous output script
-    const subscript = Script.fromHex(prevScriptHex);
-
-    // Default sighash type for BSV: SIGHASH_ALL | SIGHASH_FORKID
-    const scope = sighashType || (TransactionSignature.SIGHASH_ALL | TransactionSignature.SIGHASH_FORKID);
-
-    // Get transaction details for sighash computation
-    const input = tx.inputs[inputIndex];
-    const otherInputs = tx.inputs.filter((_, i) => i !== inputIndex);
-
-    // Compute the sighash preimage
-    const preimage = TransactionSignature.format({
-      sourceTXID: input.sourceTXID,
-      sourceOutputIndex: input.sourceOutputIndex,
-      sourceSatoshis: satoshis,
-      transactionVersion: tx.version,
-      otherInputs: otherInputs,
-      outputs: tx.outputs,
-      inputIndex: inputIndex,
-      subscript: subscript,
-      inputSequence: input.sequence,
-      lockTime: tx.lockTime,
-      scope: scope
-    });
-
-    // Double SHA256 the preimage to get sighash
-    const sighash = Hash.hash256(Buffer.from(preimage));
-
-    return { success: true, sighash: Buffer.from(sighash).toString('hex') };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-// Verify multisig (for checkMultiSig opcode)
-ipcMain.handle('bsv-verify-multisig', async (event, { signaturesHex, pubKeysHex, sighashHex }) => {
-  try {
-    const { PublicKey, Signature } = getBsvSdk();
-
-    // Parse all public keys
-    const pubKeys = pubKeysHex.map(hex => PublicKey.fromString(hex));
-
-    // Parse all signatures (filter empty ones, strip sighash bytes)
-    const signatures = signaturesHex
-      .filter(sig => sig && sig.length > 0)
-      .map(hex => {
-        const sigBytes = Buffer.from(hex, 'hex');
-        // Strip sighash byte if present
-        if (sigBytes.length > 0) {
-          const lastByte = sigBytes[sigBytes.length - 1];
-          if (lastByte >= 0x01 && lastByte <= 0x83) {
-            return Signature.fromDER(Array.from(sigBytes.slice(0, -1)));
-          }
-        }
-        return Signature.fromDER(hex, 'hex');
-      });
-
-    const sighashBytes = Array.from(Buffer.from(sighashHex, 'hex'));
-
-    // Bitcoin multisig: signatures must match pubkeys in order
-    // Each signature consumes the next matching pubkey
-    let pubKeyIndex = 0;
-    let validCount = 0;
-
-    for (const sig of signatures) {
-      while (pubKeyIndex < pubKeys.length) {
-        try {
-          const isValid = sig.verify(sighashBytes, pubKeys[pubKeyIndex]);
-          pubKeyIndex++;
-          if (isValid) {
-            validCount++;
-            break;
-          }
-        } catch (e) {
-          // Invalid signature format or verification error, try next pubkey
-          pubKeyIndex++;
-        }
-      }
-    }
-
-    const allValid = validCount === signatures.length;
-    return { success: true, valid: allValid, validCount };
+    return {
+      success: true,
+      sighash: sighashFor({ txHex, inputIndex, prevScriptHex, satoshis, subscriptHex }, scope)
+    };
   } catch (error) {
     return { success: false, error: error.message };
   }

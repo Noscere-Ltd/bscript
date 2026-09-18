@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com data:; worker-src 'self' blob:; child-src 'self' blob:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com data:; worker-src 'self' blob:; child-src 'self' blob:;">
   <title>SVSCRIPT - Bitcoin Script Debugger</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -538,50 +538,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 
   <!-- Load application scripts after Monaco loader is ready -->
-  <script>
-    // Wait for Monaco loader to be available
-    if (typeof require !== 'undefined' && typeof require.config !== 'undefined') {
-      // Loader is ready, load app scripts
-      const script1 = document.createElement('script');
-      script1.src = 'interpreter.js';
-      document.body.appendChild(script1);
-
-      script1.onload = function() {
-        const script2 = document.createElement('script');
-        script2.src = 'syntax.js';
-        document.body.appendChild(script2);
-
-        script2.onload = function() {
-          const script2a = document.createElement('script');
-          script2a.src = 'push-tx-binding.js';
-          document.body.appendChild(script2a);
-
-          script2a.onload = function() {
-            const script2b = document.createElement('script');
-            script2b.src = 'compiler.js';
-            document.body.appendChild(script2b);
-
-            script2b.onload = function() {
-              const script2c = document.createElement('script');
-              script2c.src = 'chain.js';
-              document.body.appendChild(script2c);
-
-              script2c.onload = function() {
-                const script2d = document.createElement('script');
-                script2d.src = 'chain-ui.js';
-                document.body.appendChild(script2d);
-
-                script2d.onload = function() {
-                  const script3 = document.createElement('script');
-                  script3.src = 'app.js';
-                  document.body.appendChild(script3);
-                };
-              };
-            };
-          };
-        };
-      };
-    }
-  </script>
+  <script src="boot.js"></script>
 </body>
 </html>

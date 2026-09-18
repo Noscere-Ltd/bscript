@@ -255,29 +255,23 @@ function updateStackPreview() {
     .filter(item => item.length > 0);
 
   if (items.length === 0) {
-    previewContainer.innerHTML = '<div class="stack-empty">No initial values</div>';
+    replaceWithPlaceholder(previewContainer, 'stack-empty', 'No initial values');
     return;
   }
 
-  // Parse and display stack (reversed to show top to bottom)
-  const reversedItems = [...items].reverse();
-  let html = '';
-
-  reversedItems.forEach((value, index) => {
+  // Parse and display stack (reversed to show top to bottom). The items are
+  // whatever the user typed, so they go in as text.
+  previewContainer.textContent = '';
+  [...items].reverse().forEach((value, index) => {
     const actualIndex = items.length - 1 - index;
-    const displayValue = value;
     const type = isNaN(Number(value)) ? 'string' : 'number';
 
-    html += `
-      <div class="stack-preview-item">
-        <span class="stack-preview-index">[${actualIndex}]</span>
-        <span class="stack-preview-value">${displayValue}</span>
-        <span class="stack-preview-type">${type}</span>
-      </div>
-    `;
+    previewContainer.appendChild(elementWithSpans('div', 'stack-preview-item', [
+      ['stack-preview-index', `[${actualIndex}]`],
+      ['stack-preview-value', value],
+      ['stack-preview-type', type]
+    ]));
   });
-
-  previewContainer.innerHTML = html;
 }
 
 // Get initial stack values from input
@@ -1113,12 +1107,22 @@ function showErrorToast(errorMessage, instruction, lineNumber) {
   // Set error message
   messageEl.textContent = errorMessage;
 
-  // Set location info
+  // Set location info. `instruction` is a token out of the script under test,
+  // so build the line rather than interpolating it into markup.
+  locationEl.textContent = '';
+  const strong = (text) => {
+    const el = document.createElement('strong');
+    el.textContent = text;
+    return el;
+  };
   if (lineNumber !== null && lineNumber !== undefined) {
-    locationEl.innerHTML = `At line <strong>${lineNumber + 1}</strong>, instruction: <strong>${instruction}</strong>`;
+    locationEl.appendChild(document.createTextNode('At line '));
+    locationEl.appendChild(strong(String(lineNumber + 1)));
+    locationEl.appendChild(document.createTextNode(', instruction: '));
   } else {
-    locationEl.innerHTML = `Instruction: <strong>${instruction}</strong>`;
+    locationEl.appendChild(document.createTextNode('Instruction: '));
   }
+  locationEl.appendChild(strong(String(instruction)));
 
   // Show toast
   toast.style.display = 'block';
@@ -1263,10 +1267,16 @@ function hideAI() {
 function clearAIChat() {
   aiMessages = [];
   const container = document.getElementById('ai-messages');
-  container.innerHTML = `
-    <div class="ai-message ai-message-assistant">
-      <div class="ai-message-content">I can help you write, explain, and fix Bitcoin Scripts. Ask me anything or use the quick actions above.</div>
-    </div>`;
+  container.textContent = '';
+
+  const message = document.createElement('div');
+  message.className = 'ai-message ai-message-assistant';
+  const content = document.createElement('div');
+  content.className = 'ai-message-content';
+  content.textContent = 'I can help you write, explain, and fix Bitcoin Scripts. ' +
+    'Ask me anything or use the quick actions above.';
+  message.appendChild(content);
+  container.appendChild(message);
 }
 
 function handleAIQuickAction(action) {
@@ -1388,19 +1398,15 @@ function appendAIMessage(role, content, isLoading) {
 }
 
 function renderAIMarkdown(text) {
-  let html = text;
+  // Escape the whole reply first, then add the formatting tags. Escaping only
+  // the code spans left every other part of the reply able to inject markup.
+  let html = escapeHtml(text);
 
   // Code blocks (```...```)
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    const escaped = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return `<pre><code>${escaped}</code></pre>`;
-  });
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => `<pre><code>${code}</code></pre>`);
 
   // Inline code
-  html = html.replace(/`([^`]+)`/g, (_, code) => {
-    const escaped = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return `<code>${escaped}</code>`;
-  });
+  html = html.replace(/`([^`]+)`/g, (_, code) => `<code>${code}</code>`);
 
   // Bold
   html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');

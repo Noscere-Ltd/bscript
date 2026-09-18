@@ -74,39 +74,46 @@ function renderChainPanel() {
   document.getElementById('chain-step-count').textContent = 'Step ' + chainEngine.stepCount;
 }
 
+// Every value below comes from a .bsm.json the user opened. Field names,
+// types and state values are untrusted, so they go in as text nodes, never
+// as markup.
 function renderStateFields() {
   var container = document.getElementById('chain-state-fields');
   var fields = chainEngine.project.stateFields;
   var state = chainEngine.currentState;
-  var html = '';
 
+  if (!fields || fields.length === 0) {
+    replaceWithPlaceholder(container, 'stack-empty', 'No state fields');
+    return;
+  }
+
+  container.textContent = '';
   for (var i = 0; i < fields.length; i++) {
     var f = fields[i];
     var val = state[f.name];
     var displayVal = val !== undefined && val !== null ? String(val) : '';
+    if (displayVal.length > 30) displayVal = displayVal.substring(0, 30) + '...';
 
-    html += '<div class="chain-field">' +
-      '<span class="chain-field-name">' + f.name + '</span>' +
-      '<span class="chain-field-type">' + f.type + '</span>' +
-      '<span class="chain-field-value">' + (displayVal.length > 30 ? displayVal.substring(0, 30) + '...' : displayVal) + '</span>' +
-      '</div>';
+    container.appendChild(elementWithSpans('div', 'chain-field', [
+      ['chain-field-name', f.name],
+      ['chain-field-type', f.type],
+      ['chain-field-value', displayVal]
+    ]));
   }
-
-  container.innerHTML = html || '<div class="stack-empty">No state fields</div>';
 }
 
 function renderMethodSelector() {
   var select = document.getElementById('chain-method-select');
   var methods = chainEngine.project.methods;
-  var html = '';
 
+  select.textContent = '';
   for (var i = 0; i < methods.length; i++) {
     var m = methods[i];
-    var label = m.name + (m.terminal ? ' (terminal)' : '');
-    html += '<option value="' + m.name + '">' + label + '</option>';
+    var option = document.createElement('option');
+    option.value = m.name;
+    option.textContent = m.name + (m.terminal ? ' (terminal)' : '');
+    select.appendChild(option);
   }
-
-  select.innerHTML = html;
 
   // Render params for selected method
   renderMethodParams();
@@ -118,21 +125,32 @@ function renderMethodParams() {
   var method = chainEngine.getMethod(methodName);
   if (!method) return;
 
-  var html = '';
-  if (method.params && method.params.length > 0) {
-    for (var i = 0; i < method.params.length; i++) {
-      var p = method.params[i];
-      html += '<div class="chain-param">' +
-        '<label class="chain-param-label">' + p.name + ' (' + p.type + ')</label>' +
-        '<input type="text" class="chain-param-input settings-text-input" ' +
-        'data-param="' + p.name + '" placeholder="' + p.type + ' value..." />' +
-        '</div>';
-    }
-  } else {
-    html = '<div class="stack-empty">No parameters (auto-injected preimage only)</div>';
+  if (!method.params || method.params.length === 0) {
+    replaceWithPlaceholder(container, 'stack-empty', 'No parameters (auto-injected preimage only)');
+    return;
   }
 
-  container.innerHTML = html;
+  container.textContent = '';
+  for (var i = 0; i < method.params.length; i++) {
+    var p = method.params[i];
+
+    var wrapper = document.createElement('div');
+    wrapper.className = 'chain-param';
+
+    var label = document.createElement('label');
+    label.className = 'chain-param-label';
+    label.textContent = p.name + ' (' + p.type + ')';
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'chain-param-input settings-text-input';
+    input.dataset.param = p.name;
+    input.placeholder = p.type + ' value...';
+
+    wrapper.appendChild(label);
+    wrapper.appendChild(input);
+    container.appendChild(wrapper);
+  }
 }
 
 function renderChainHistory() {
@@ -140,24 +158,23 @@ function renderChainHistory() {
   var history = chainEngine.history;
 
   if (history.length === 0) {
-    container.innerHTML = '<div class="stack-empty">No transitions yet</div>';
+    replaceWithPlaceholder(container, 'stack-empty', 'No transitions yet');
     return;
   }
 
-  var html = '';
+  container.textContent = '';
   for (var i = 0; i < history.length; i++) {
     var h = history[i];
     var stateStr = h.newState ? JSON.stringify(h.newState) : '(terminated)';
     if (stateStr.length > 50) stateStr = stateStr.substring(0, 50) + '...';
 
-    html += '<div class="chain-history-item' + (h.terminal ? ' terminal' : '') + '">' +
-      '<span class="chain-history-step">#' + h.step + '</span>' +
-      '<span class="chain-history-method">' + h.method + '</span>' +
-      '<span class="chain-history-state">' + stateStr + '</span>' +
-      '</div>';
+    container.appendChild(elementWithSpans('div', 'chain-history-item' + (h.terminal ? ' terminal' : ''), [
+      ['chain-history-step', '#' + h.step],
+      ['chain-history-method', h.method],
+      ['chain-history-state', stateStr]
+    ]));
   }
 
-  container.innerHTML = html;
   container.scrollTop = container.scrollHeight;
 }
 

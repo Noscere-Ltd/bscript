@@ -18,6 +18,27 @@ function getBsvSdk() {
 let mainWindow;
 let lastUsedDirectory = null; // Track last directory for file dialogs
 
+// Paths the user picked in a file dialog this session, plus the examples that
+// ship with the app. The renderer names the file it wants to write or import,
+// and a script, a chain project or an AI reply can reach those calls, so the
+// main process only honours a path the user has already chosen. Without this
+// the renderer can write anywhere the app can.
+const grantedFiles = new Set();
+const grantedDirs = new Set([path.resolve(__dirname, '../../examples')]);
+
+function grantPath(filePath) {
+  grantedFiles.add(path.resolve(filePath));
+  grantedDirs.add(path.dirname(path.resolve(filePath)));
+}
+
+function isInGrantedDir(filePath) {
+  const resolved = path.resolve(filePath);
+  for (const dir of grantedDirs) {
+    if (resolved === dir || resolved.startsWith(dir + path.sep)) return true;
+  }
+  return false;
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -114,6 +135,7 @@ ipcMain.handle('load-file', async (event) => {
 
     // Remember this directory for next time
     lastUsedDirectory = path.dirname(filePath);
+    grantPath(filePath);
 
     // Add to recent documents
     app.addRecentDocument(filePath);
@@ -153,6 +175,12 @@ ipcMain.handle('save-file', async (event, { content, filePath }) => {
       }
 
       savePath = result.filePath;
+      grantPath(savePath);
+    } else if (!grantedFiles.has(path.resolve(savePath))) {
+      return {
+        success: false,
+        error: 'Refusing to write to a path that was not chosen in a file dialog this session: ' + savePath
+      };
     }
 
     await fs.writeFile(savePath, content, 'utf-8');
@@ -199,6 +227,16 @@ ipcMain.handle('resolve-import-path', async (event, currentFilePath, importPath)
 
 ipcMain.handle('read-import-file', async (event, filePath) => {
   try {
+    if (path.extname(filePath) !== '.bscript') {
+      return { success: false, error: 'Imports must be .bscript files: ' + filePath };
+    }
+    if (!isInGrantedDir(filePath)) {
+      return {
+        success: false,
+        error: 'Refusing to read outside the directories opened this session: ' + filePath
+      };
+    }
+
     const content = await fs.readFile(filePath, 'utf-8');
 
     return {
@@ -732,6 +770,7 @@ ipcMain.handle('open-chain-dialog', async (event) => {
     }
     const filePath = result.filePaths[0];
     lastUsedDirectory = path.dirname(filePath);
+    grantPath(filePath);
     return { success: true, filePath: filePath };
   } catch (error) {
     return { success: false, error: error.message };

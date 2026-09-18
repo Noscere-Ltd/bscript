@@ -40,8 +40,6 @@ contextBridge.exposeInMainWorld('bsv', {
   hash160: (data) => ipcRenderer.invoke('bsv-hash160', data),
 
   // Signature verification functions
-  verifyDataSig: (signatureHex, messageHex, pubKeyHex) =>
-    ipcRenderer.invoke('bsv-verify-data-sig', { signatureHex, messageHex, pubKeyHex }),
   verifySig: (signatureHex, sighashHex, pubKeyHex) =>
     ipcRenderer.invoke('bsv-verify-sig', { signatureHex, sighashHex, pubKeyHex }),
   computeSighash: (txHex, inputIndex, prevScriptHex, satoshis, sighashType) =>

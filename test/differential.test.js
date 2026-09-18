@@ -83,6 +83,32 @@ const CORPUS = {
     '1 verify 9', '1 1 equalVerify 9', '3 3 numEqualVerify 9'
   ],
 
+  // Opcodes the Genesis upgrade restored. At least three cases each,
+  // including a boundary and an error.
+  restored: [
+    // ver pushes the 4-byte little-endian transaction version
+    'ver', 'ver size', 'ver 4 num2bin equal',
+    // verIf and verNotIf branch on that version, and only a 4-byte item matches
+    'ver verIf 11 else 22 endIf', 'ver verNotIf 11 else 22 endIf',
+    '0x01000000 verIf 11 else 22 endIf', '0x02000000 verIf 11 else 22 endIf',
+    '0x01 verIf 11 else 22 endIf', 'verIf 11 endIf',
+    // 2mul and 2div, with a negative operand and an empty stack
+    '5 2mul', '-5 2mul', '0 2mul', '5 2div', '-5 2div', '1 2div', '2div',
+    // substr, with both boundaries and two out-of-range cases
+    '0x11223344 1 2 substr', '0x11223344 0 4 substr', '0x11223344 3 1 substr',
+    '0x11223344 0 0 substr', '0x11223344 4 0 substr', '0x11223344 1 4 substr',
+    '0x11223344 -1 2 substr', '0x1122 1 substr',
+    // left and right, at both ends of their range
+    '0x11223344 2 left', '0x11223344 0 left', '0x11223344 4 left',
+    '0x11223344 5 left', '0x11223344 -1 left',
+    '0x11223344 2 right', '0x11223344 0 right', '0x11223344 4 right',
+    '0x11223344 5 right', '0x1122 right',
+    // lShiftNum and rShiftNum shift the number, not the bytes
+    '1 4 lShiftNum', '-1 4 lShiftNum', '5 0 lShiftNum', '1 -1 lShiftNum',
+    '256 4 rShiftNum', '-256 4 rShiftNum', '7 1 rShiftNum', '5 0 rShiftNum',
+    '1 -1 rShiftNum', '4 rShiftNum'
+  ],
+
   hashing: [
     '0xabcd sha256', '0xabcd sha1', '0xabcd ripemd160',
     '0xabcd hash256', '0xabcd hash160', '0xaabbccddeeff hash160',

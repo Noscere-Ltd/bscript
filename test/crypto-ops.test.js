@@ -44,9 +44,11 @@ test('checkSig is simulated by default', async () => {
   assert.deepStrictEqual(await stack('checkSigVerify 7', ['0xdead', '0xbeef']), [7]);
 });
 
-test('checkDataSig is simulated by default', async () => {
-  assert.deepStrictEqual(await stack('checkDataSig', ['0xa1', '0xb2', '0xc3']), [1]);
-  assert.deepStrictEqual(await stack('checkDataSigVerify 7', ['0xa1', '0xb2', '0xc3']), [7]);
+test('checkDataSig is not a BSV opcode', async () => {
+  // OP_CHECKDATASIG is Bitcoin Cash. 0xba and 0xbb are invalid on BSV, so
+  // neither the interpreter nor the compiler may know the name.
+  assert.match(await failure('checkDataSig', ['0xa1', '0xb2', '0xc3']), /Unknown opcode/);
+  assert.match(await failure('checkDataSigVerify', ['0xa1', '0xb2', '0xc3']), /Unknown opcode/);
 });
 
 test('checkMultiSig consumes the dummy, the sigs and the keys', async () => {

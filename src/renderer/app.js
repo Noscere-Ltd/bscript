@@ -958,7 +958,6 @@ function toggleSignatures(event) {
   if (settings.enableSignatures) {
     logToConsole(`Network set to: ${settings.network}`, 'info');
     logToConsole('Note: checkSig/checkMultiSig require transaction context', 'warning');
-    logToConsole('Note: checkDataSig works without transaction context', 'info');
   }
 }
 

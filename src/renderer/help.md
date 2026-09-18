@@ -123,10 +123,12 @@ LOOP[3]{$i}  // Expands to: 0 1 2
 - **min**, **max** - Minimum/maximum
 - **within** - Check if value in range
 - **1add**, **1sub** - Increment/decrement by 1
+- **2mul**, **2div** - Double/halve, truncating toward zero
 
 ### Bitwise Operations
 - **and**, **or**, **xor** - Bitwise logic
-- **lShift**, **rShift** - Bit shifting
+- **lShift**, **rShift** - Shift the bytes
+- **lShiftNum**, **rShiftNum** - Shift the number
 - **invert** - Bitwise NOT
 
 ### Comparison
@@ -147,6 +149,9 @@ LOOP[3]{$i}  // Expands to: 0 1 2
 - **notIf** ... **endIf** - Negated conditional
 - **verify** - Fail if top is false
 - **return** - Exit script immediately
+- **ver** - Push the transaction version as four little-endian bytes
+- **verIf** ... **endIf** - Branch when the top item is that version
+- **verNotIf** ... **endIf** - Negated version branch
 
 ### String/Byte Operations (BSV Restored)
 - **cat** - Concatenate top two items
@@ -154,6 +159,8 @@ LOOP[3]{$i}  // Expands to: 0 1 2
 - **num2bin** - Convert number to binary
 - **bin2num** - Convert binary to number
 - **size** - Get byte length
+- **substr** - Take length bytes from an offset
+- **left**, **right** - Take bytes from either end
 
 ### Constants
 - **true**, **false** - Boolean values

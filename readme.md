@@ -103,7 +103,6 @@ dup hash160 equalVerify checkSig
 ### Cryptographic
 - `ripemd160`, `sha1`, `sha256`, `hash160`, `hash256`
 - `checkSig`, `checkSigVerify`, `checkMultiSig`, `checkMultiSigVerify`
-- `checkDataSig`, `checkDataSigVerify` (BSV)
 
 ## Usage
 

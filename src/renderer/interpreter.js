@@ -430,7 +430,8 @@ class ScriptInterpreter {
     this.skipIPIncrement = false; // Reset flag before executing instruction
 
     // Inside a branch that was not taken, only the conditionals themselves run
-    if (!this.branchExecuting() && !['if', 'notIf', 'else', 'endIf'].includes(instruction)) {
+    if (!this.branchExecuting() &&
+        !['if', 'notIf', 'verIf', 'verNotIf', 'else', 'endIf'].includes(instruction)) {
       this.ip++;
       return true;
     }
@@ -561,6 +562,8 @@ class ScriptInterpreter {
       'invert': () => this.op_invert(),
       'lShift': () => this.op_lshift(),
       'rShift': () => this.op_rshift(),
+      'lShiftNum': () => this.op_lshiftnum(),
+      'rShiftNum': () => this.op_rshiftnum(),
 
       // Comparison
       'equal': () => this.op_equal(),
@@ -579,6 +582,9 @@ class ScriptInterpreter {
       'cat': () => this.op_cat(),
       'split': () => this.op_split(),
       'num2bin': () => this.op_num2bin(),
+      'substr': () => this.op_substr(),
+      'left': () => this.op_left(),
+      'right': () => this.op_right(),
       'bin2num': () => this.op_bin2num(),
       'size': () => this.op_size(),
 
@@ -593,8 +599,13 @@ class ScriptInterpreter {
       'checkMultiSig': async () => await this.op_checkmultisig(),
       'checkMultiSigVerify': async () => await this.op_checkmultisigverify(),
       'checkPreimage': async () => await this.op_checkpreimage(),
-      'checkDataSig': async () => await this.op_checkdatasig(),
-      'checkDataSigVerify': async () => await this.op_checkdatasigverify(),
+
+      // Restored by the Genesis upgrade
+      'ver': () => this.op_ver(),
+      'verIf': () => this.op_verif(),
+      'verNotIf': () => this.op_vernotif(),
+      '2mul': () => this.op_2mul(),
+      '2div': () => this.op_2div(),
     };
 
     const opcodeFunc = opcodeMap[opcode];
@@ -828,6 +839,43 @@ class ScriptInterpreter {
     this.addHistory('roll', `Move item at depth ${n} to top`);
   }
 
+  // The transaction version as the 4 little-endian bytes the node compares
+  versionHex() {
+    const v = this.txVersion;
+    return [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff]
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  op_ver() {
+    const hex = this.versionHex();
+    this.pushStack('0x' + hex);
+    this.addHistory('ver', `Push transaction version ${this.txVersion} as 0x${hex}`);
+  }
+
+  // verIf and verNotIf branch on the transaction version rather than on
+  // truthiness, and only an item of exactly four bytes can match it.
+  openVersionBranch(opcode, invert) {
+    let taken = false;
+    if (this.branchExecuting()) {
+      if (this.mainStack.length < 1) {
+        throw new Error(`Cannot execute '${opcode}' - the stack is empty`);
+      }
+      const hex = this.toHexString(this.popStack());
+      taken = hex.length === 8 && hex.toLowerCase() === this.versionHex();
+      if (invert) taken = !taken;
+    }
+    this.condStack.push(taken);
+    this.addHistory(opcode, `Conditional branch: ${taken}`);
+  }
+
+  op_verif() {
+    this.openVersionBranch('verIf', false);
+  }
+
+  op_vernotif() {
+    this.openVersionBranch('verNotIf', true);
+  }
+
   op_rot() {
     const a = this.popStack();
     const b = this.popStack();
@@ -951,6 +999,19 @@ class ScriptInterpreter {
     if (b === 0) throw new Error('Modulo by zero');
     this.pushStack(a % b);
     this.addHistory('mod', `${a} % ${b} = ${a % b}`);
+  }
+
+  op_2mul() {
+    const a = this.toNumber(this.popStack());
+    this.pushStack(a * 2);
+    this.addHistory('2mul', `${a} * 2 = ${a * 2}`);
+  }
+
+  op_2div() {
+    const a = this.toNumber(this.popStack());
+    const result = Math.trunc(a / 2);
+    this.pushStack(result);
+    this.addHistory('2div', `${a} / 2 = ${result}`);
   }
 
   op_negate() {
@@ -1185,6 +1246,62 @@ class ScriptInterpreter {
     this.pushStack('0x' + hex.substring(0, position * 2));
     this.pushStack('0x' + hex.substring(position * 2));
     this.addHistory('split', `Split at byte ${position}`);
+  }
+
+  op_substr() {
+    const length = this.toNumber(this.popStack());
+    const offset = this.toNumber(this.popStack());
+    const hex = this.toHexString(this.popStack());
+    const size = hex.length / 2;
+    if (offset < 0 || offset >= size || length < 0 || length > size - offset) {
+      throw new Error(`substr offset (${offset}) must be in [0, ${size}) and ` +
+        `length (${length}) in [0, ${size - offset}]`);
+    }
+    this.pushStack('0x' + hex.substring(offset * 2, (offset + length) * 2));
+    this.addHistory('substr', `Bytes ${offset} to ${offset + length}`);
+  }
+
+  op_left() {
+    const length = this.toNumber(this.popStack());
+    const hex = this.toHexString(this.popStack());
+    const size = hex.length / 2;
+    if (length < 0 || length > size) {
+      throw new Error(`left length (${length}) must be in [0, ${size}]`);
+    }
+    this.pushStack('0x' + hex.substring(0, length * 2));
+    this.addHistory('left', `Leftmost ${length} bytes`);
+  }
+
+  op_right() {
+    const length = this.toNumber(this.popStack());
+    const hex = this.toHexString(this.popStack());
+    const size = hex.length / 2;
+    if (length < 0 || length > size) {
+      throw new Error(`right length (${length}) must be in [0, ${size}]`);
+    }
+    this.pushStack('0x' + hex.substring((size - length) * 2));
+    this.addHistory('right', `Rightmost ${length} bytes`);
+  }
+
+  // lShiftNum and rShiftNum shift the number, where lShift and rShift shift
+  // the bytes. rShiftNum truncates toward zero, so it is not a floor shift.
+  op_lshiftnum() {
+    const bits = this.toNumber(this.popStack());
+    if (bits < 0) throw new Error('lShiftNum bits to shift must not be negative');
+    const value = this.toNumber(this.popStack());
+    const result = value * Math.pow(2, bits);
+    this.pushStack(result);
+    this.addHistory('lShiftNum', `${value} << ${bits} = ${result}`);
+  }
+
+  op_rshiftnum() {
+    const bits = this.toNumber(this.popStack());
+    if (bits < 0) throw new Error('rShiftNum bits to shift must not be negative');
+    const value = this.toNumber(this.popStack());
+    const magnitude = Math.floor(Math.abs(value) / Math.pow(2, bits));
+    const result = value < 0 ? -magnitude : magnitude;
+    this.pushStack(result);
+    this.addHistory('rShiftNum', `${value} >> ${bits} = ${result}`);
   }
 
   // Little-endian, sign-magnitude byte encoding (Bitcoin Script number format)
@@ -1445,35 +1562,6 @@ class ScriptInterpreter {
     this.op_verify();
   }
 
-  async op_checkdatasig() {
-    const pubKey = this.popStack();
-    const message = this.popStack();
-    const signature = this.popStack();
-
-    if (this.enableSignatures) {
-      // Convert values to hex strings
-      const sigHex = this.toHexString(signature);
-      const msgHex = this.toHexString(message);
-      const pubKeyHex = this.toHexString(pubKey);
-
-      const result = await window.bsv.verifyDataSig(sigHex, msgHex, pubKeyHex);
-
-      if (!result.success) {
-        throw new Error(`checkDataSig error: ${result.error}`);
-      }
-
-      this.pushStack(result.valid ? 1 : 0);
-      this.addHistory('checkDataSig', `Verify data signature: ${result.valid ? 'VALID' : 'INVALID'}`);
-    } else {
-      this.pushStack(1); // Simplified: always return true
-      this.addHistory('checkDataSig', 'Verify data signature (simulated - always true)');
-    }
-  }
-
-  async op_checkdatasigverify() {
-    await this.op_checkdatasig();
-    this.op_verify();
-  }
 }
 
 // SIGHASH_ALL | SIGHASH_FORKID, the type the OP_PUSH_TX binding pins

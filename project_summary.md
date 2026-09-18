@@ -248,7 +248,6 @@ npm run dev
 - ✅ lShift, rShift (bit shifting)
 - ✅ cat, split (string operations)
 - ✅ num2bin, bin2num (conversions)
-- ✅ checkDataSig (data signature verification)
 
 ## Execution Model
 

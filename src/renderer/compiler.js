@@ -4,6 +4,7 @@ const OPCODE_MAP = {
   'false': 0x00, '0': 0x00,
   'true': 0x51, '1': 0x51,
   'nop': 0x61,
+  'ver': 0x62, 'verIf': 0x65, 'verNotIf': 0x66,
   'if': 0x63, 'notIf': 0x64, 'else': 0x67, 'endIf': 0x68,
   'verify': 0x69, 'return': 0x6a,
   'toAltStack': 0x6b, 'fromAltStack': 0x6c,
@@ -15,7 +16,7 @@ const OPCODE_MAP = {
   'cat': 0x7e, 'split': 0x7f, 'num2bin': 0x80, 'bin2num': 0x81, 'size': 0x82,
   'invert': 0x83, 'and': 0x84, 'or': 0x85, 'xor': 0x86,
   'equal': 0x87, 'equalVerify': 0x88,
-  '1add': 0x8b, '1sub': 0x8c,
+  '1add': 0x8b, '1sub': 0x8c, '2mul': 0x8d, '2div': 0x8e,
   'negate': 0x8f, 'abs': 0x90, 'not': 0x91, '0notEqual': 0x92,
   'add': 0x93, 'sub': 0x94, 'mul': 0x95, 'div': 0x96, 'mod': 0x97,
   'lShift': 0x98, 'rShift': 0x99,
@@ -26,9 +27,10 @@ const OPCODE_MAP = {
   'min': 0xa3, 'max': 0xa4, 'within': 0xa5,
   'ripemd160': 0xa6, 'sha1': 0xa7, 'sha256': 0xa8,
   'hash160': 0xa9, 'hash256': 0xaa,
+  'substr': 0xb3, 'left': 0xb4, 'right': 0xb5,
+  'lShiftNum': 0xb6, 'rShiftNum': 0xb7,
   'checkSig': 0xac, 'checkSigVerify': 0xad,
   'checkMultiSig': 0xae, 'checkMultiSigVerify': 0xaf,
-  'checkDataSig': 0xba, 'checkDataSigVerify': 0xbb,
   'codeSeparator': 0xab,
 };
 
@@ -37,6 +39,9 @@ var OPCODE_NAMES = (function() {
   map[0x00] = 'OP_0';
   map[0x51] = 'OP_1';
   map[0x61] = 'OP_NOP';
+  map[0x62] = 'OP_VER';
+  map[0x65] = 'OP_VERIF';
+  map[0x66] = 'OP_VERNOTIF';
   map[0x63] = 'OP_IF';
   map[0x64] = 'OP_NOTIF';
   map[0x67] = 'OP_ELSE';
@@ -75,6 +80,8 @@ var OPCODE_NAMES = (function() {
   map[0x88] = 'OP_EQUALVERIFY';
   map[0x8b] = 'OP_1ADD';
   map[0x8c] = 'OP_1SUB';
+  map[0x8d] = 'OP_2MUL';
+  map[0x8e] = 'OP_2DIV';
   map[0x8f] = 'OP_NEGATE';
   map[0x90] = 'OP_ABS';
   map[0x91] = 'OP_NOT';
@@ -107,9 +114,12 @@ var OPCODE_NAMES = (function() {
   map[0xad] = 'OP_CHECKSIGVERIFY';
   map[0xae] = 'OP_CHECKMULTISIG';
   map[0xaf] = 'OP_CHECKMULTISIGVERIFY';
-  map[0xba] = 'OP_CHECKDATASIG';
-  map[0xbb] = 'OP_CHECKDATASIGVERIFY';
   map[0xab] = 'OP_CODESEPARATOR';
+  map[0xb3] = 'OP_SUBSTR';
+  map[0xb4] = 'OP_LEFT';
+  map[0xb5] = 'OP_RIGHT';
+  map[0xb6] = 'OP_LSHIFTNUM';
+  map[0xb7] = 'OP_RSHIFTNUM';
   // OP_N for 2-16
   map[0x52] = 'OP_2';
   map[0x53] = 'OP_3';

@@ -288,30 +288,6 @@ ipcMain.handle('bsv-hash160', async (event, data) => {
 // IPC Handlers for BSV SDK signature verification
 // These run in the main process where Node modules are available
 
-// Verify data signature (for checkDataSig opcode)
-// Message is expected to be already hashed (SHA256) per Bitcoin Script convention
-ipcMain.handle('bsv-verify-data-sig', async (event, { signatureHex, messageHex, pubKeyHex }) => {
-  try {
-    const { PublicKey, Signature } = getBsvSdk();
-
-    // Parse the public key (supports compressed 33-byte and uncompressed 65-byte)
-    const pubKey = PublicKey.fromString(pubKeyHex);
-
-    // Parse the DER-encoded signature
-    const signature = Signature.fromDER(signatureHex, 'hex');
-
-    // Convert message hash to array for verification
-    const messageBytes = Array.from(Buffer.from(messageHex, 'hex'));
-
-    // Verify signature over the message hash
-    const isValid = signature.verify(messageBytes, pubKey);
-
-    return { success: true, valid: isValid };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
 // Verify signature with pre-computed sighash (for checkSig opcode)
 ipcMain.handle('bsv-verify-sig', async (event, { signatureHex, sighashHex, pubKeyHex }) => {
   try {
@@ -606,13 +582,15 @@ You write scripts using camelCase opcodes. Here are all valid opcodes:
 false, true, nop, if, notIf, else, endIf, verify, return,
 toAltStack, fromAltStack, 2drop, 2dup, 3dup, 2over, 2rot, 2swap,
 ifDup, depth, drop, dup, nip, over, pick, roll, rot, swap, tuck,
-cat, split, num2bin, bin2num, size, invert, and, or, xor, equal, equalVerify,
-1add, 1sub, negate, abs, not, 0notEqual,
-add, sub, mul, div, mod, lShift, rShift,
+ver, verIf, verNotIf,
+cat, split, substr, left, right, num2bin, bin2num, size,
+invert, and, or, xor, equal, equalVerify,
+1add, 1sub, 2mul, 2div, negate, abs, not, 0notEqual,
+add, sub, mul, div, mod, lShift, rShift, lShiftNum, rShiftNum,
 booland, boolor, numEqual, numEqualVerify, numNotEqual,
 lessThan, greaterThan, lessThanOrEqual, greaterThanOrEqual, min, max, within,
 ripemd160, sha1, sha256, hash160, hash256,
-checkSig, checkSigVerify, checkMultiSig, checkMultiSigVerify, checkDataSig, checkDataSigVerify
+checkSig, checkSigVerify, checkMultiSig, checkMultiSigVerify
 
 Syntax rules:
 - One opcode per line (or space-separated on a line)

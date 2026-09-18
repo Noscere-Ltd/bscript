@@ -1,0 +1,365 @@
+var chainEngine = new ChainEngine();
+var chainModeActive = false;
+
+function toggleChainMode(enabled) {
+  chainModeActive = enabled;
+  var stackPanel = document.getElementById('panel-stack-input');
+  var chainPanel = document.getElementById('chain-panel-main');
+  var chainToggle = document.getElementById('btn-chain-mode');
+
+  if (enabled) {
+    stackPanel.style.display = 'none';
+    chainPanel.style.display = 'flex';
+    if (chainToggle) chainToggle.classList.add('active');
+  } else {
+    stackPanel.style.display = 'flex';
+    chainPanel.style.display = 'none';
+    if (chainToggle) chainToggle.classList.remove('active');
+  }
+}
+
+async function openChainProject() {
+  try {
+    // Open file dialog filtered for JSON files
+    var dialogResult = await window.electronAPI.openChainDialog();
+    if (!dialogResult.success || dialogResult.canceled) return;
+
+    var loadResult = await window.electronAPI.loadChainProject(dialogResult.filePath);
+    if (!loadResult.success) {
+      logToConsole('Failed to load chain project: ' + loadResult.error, 'error');
+      return;
+    }
+
+    chainEngine.loadProject(loadResult.project, loadResult.bscriptFiles);
+
+    // Switch to chain mode
+    toggleChainMode(true);
+
+    // Load the contract source into the editor
+    var contractSrc = loadResult.bscriptFiles[loadResult.project.contract] || '';
+    editor.setValue(contractSrc);
+    currentFilePath = dialogResult.filePath;
+    hasUnsavedChanges = false;
+    updateWindowTitle();
+
+    // Render the chain panel
+    renderChainPanel();
+
+    logToConsole('Chain project loaded: ' + loadResult.project.name, 'success');
+    logToConsole('State fields: ' + chainEngine.project.stateFields.map(function(f) { return f.name; }).join(', '), 'info');
+    logToConsole('Methods: ' + chainEngine.project.methods.map(function(m) { return m.name; }).join(', '), 'info');
+  } catch (err) {
+    logToConsole('Error loading chain project: ' + err.message, 'error');
+  }
+}
+
+function renderChainPanel() {
+  if (!chainEngine.project) return;
+
+  var project = chainEngine.project;
+
+  // Render project header
+  document.getElementById('chain-project-name').textContent = project.name || 'Unnamed';
+
+  // Render state fields
+  renderStateFields();
+
+  // Render method selector
+  renderMethodSelector();
+
+  // Render chain history
+  renderChainHistory();
+
+  // Update step count
+  document.getElementById('chain-step-count').textContent = 'Step ' + chainEngine.stepCount;
+}
+
+function renderStateFields() {
+  var container = document.getElementById('chain-state-fields');
+  var fields = chainEngine.project.stateFields;
+  var state = chainEngine.currentState;
+  var html = '';
+
+  for (var i = 0; i < fields.length; i++) {
+    var f = fields[i];
+    var val = state[f.name];
+    var displayVal = val !== undefined && val !== null ? String(val) : '';
+
+    html += '<div class="chain-field">' +
+      '<span class="chain-field-name">' + f.name + '</span>' +
+      '<span class="chain-field-type">' + f.type + '</span>' +
+      '<span class="chain-field-value">' + (displayVal.length > 30 ? displayVal.substring(0, 30) + '...' : displayVal) + '</span>' +
+      '</div>';
+  }
+
+  container.innerHTML = html || '<div class="stack-empty">No state fields</div>';
+}
+
+function renderMethodSelector() {
+  var select = document.getElementById('chain-method-select');
+  var methods = chainEngine.project.methods;
+  var html = '';
+
+  for (var i = 0; i < methods.length; i++) {
+    var m = methods[i];
+    var label = m.name + (m.terminal ? ' (terminal)' : '');
+    html += '<option value="' + m.name + '">' + label + '</option>';
+  }
+
+  select.innerHTML = html;
+
+  // Render params for selected method
+  renderMethodParams();
+}
+
+function renderMethodParams() {
+  var container = document.getElementById('chain-method-params');
+  var methodName = document.getElementById('chain-method-select').value;
+  var method = chainEngine.getMethod(methodName);
+  if (!method) return;
+
+  var html = '';
+  if (method.params && method.params.length > 0) {
+    for (var i = 0; i < method.params.length; i++) {
+      var p = method.params[i];
+      html += '<div class="chain-param">' +
+        '<label class="chain-param-label">' + p.name + ' (' + p.type + ')</label>' +
+        '<input type="text" class="chain-param-input settings-text-input" ' +
+        'data-param="' + p.name + '" placeholder="' + p.type + ' value..." />' +
+        '</div>';
+    }
+  } else {
+    html = '<div class="stack-empty">No parameters (auto-injected preimage only)</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+function renderChainHistory() {
+  var container = document.getElementById('chain-history');
+  var history = chainEngine.history;
+
+  if (history.length === 0) {
+    container.innerHTML = '<div class="stack-empty">No transitions yet</div>';
+    return;
+  }
+
+  var html = '';
+  for (var i = 0; i < history.length; i++) {
+    var h = history[i];
+    var stateStr = h.newState ? JSON.stringify(h.newState) : '(terminated)';
+    if (stateStr.length > 50) stateStr = stateStr.substring(0, 50) + '...';
+
+    html += '<div class="chain-history-item' + (h.terminal ? ' terminal' : '') + '">' +
+      '<span class="chain-history-step">#' + h.step + '</span>' +
+      '<span class="chain-history-method">' + h.method + '</span>' +
+      '<span class="chain-history-state">' + stateStr + '</span>' +
+      '</div>';
+  }
+
+  container.innerHTML = html;
+  container.scrollTop = container.scrollHeight;
+}
+
+// Collect new state values from UI (for non-terminal methods, user specifies new state)
+function collectNewState() {
+  var fields = chainEngine.project.stateFields;
+  var newState = JSON.parse(JSON.stringify(chainEngine.currentState));
+
+  // For now, prompt-free: auto-increment/decrement based on method name
+  // In a real implementation, users could edit state fields before running
+  // For the MVP, the new state is provided via a simple input
+  var newStateInput = document.getElementById('chain-new-state-input');
+  if (newStateInput && newStateInput.value.trim()) {
+    try {
+      var parsed = JSON.parse(newStateInput.value.trim());
+      for (var key in parsed) {
+        if (newState.hasOwnProperty(key)) {
+          newState[key] = parsed[key];
+        }
+      }
+    } catch (e) {
+      // Ignore parse errors, use current state
+    }
+  }
+
+  return newState;
+}
+
+async function runChainTransition() {
+  if (!chainEngine.project) {
+    logToConsole('No chain project loaded', 'warning');
+    return;
+  }
+
+  if (!chainEngine.currentUtxo) {
+    logToConsole('Chain has terminated. Reset to continue.', 'warning');
+    return;
+  }
+
+  var methodName = document.getElementById('chain-method-select').value;
+  var method = chainEngine.getMethod(methodName);
+  if (!method) {
+    logToConsole('Unknown method: ' + methodName, 'error');
+    return;
+  }
+
+  logToConsole('--- Chain Transition: ' + methodName + ' (Step ' + (chainEngine.stepCount + 1) + ') ---', 'info');
+
+  try {
+    // Collect method params from UI
+    var paramValues = {};
+    var paramInputs = document.querySelectorAll('#chain-method-params .chain-param-input');
+    for (var i = 0; i < paramInputs.length; i++) {
+      paramValues[paramInputs[i].dataset.param] = paramInputs[i].value.trim();
+    }
+
+    // Collect new state
+    var newState = collectNewState();
+    var isTerminal = method.terminal === true;
+
+    // Prepare transition
+    var prep = chainEngine.prepareTransition(methodName, paramValues, newState);
+
+    // Build spending transaction via IPC
+    logToConsole('Building transaction...', 'info');
+    var txResult = await window.electronAPI.buildChainTx({
+      prevTxid: prep.prevUtxo.txid,
+      prevVout: prep.prevUtxo.vout,
+      prevSatoshis: prep.prevUtxo.satoshis,
+      prevLockingScript: prep.prevUtxo.lockingScript,
+      newLockingScript: prep.newLockingScript,
+      newSatoshis: prep.newSatoshis
+    });
+
+    if (!txResult.success) {
+      logToConsole('Failed to build transaction: ' + txResult.error, 'error');
+      return;
+    }
+
+    logToConsole('Transaction built: ' + txResult.txid.substring(0, 16) + '...', 'info');
+
+    // Compute preimage and k=1 signature
+    logToConsole('Computing preimage...', 'info');
+    var preimageResult = await window.runar.computePreimage({
+      txHex: txResult.txHex,
+      inputIndex: 0,
+      lockingScriptHex: prep.prevUtxo.lockingScript,
+      satoshis: prep.prevUtxo.satoshis,
+      codeSeparatorIndex: prep.codeSeparatorIndex
+    });
+
+    if (!preimageResult.success) {
+      logToConsole('Failed to compute preimage: ' + preimageResult.error, 'error');
+      return;
+    }
+
+    // Build initial stack: [method_params..., k1_sig, preimage]
+    var initialStack = [];
+
+    // Add method parameter values
+    if (method.params) {
+      for (var j = 0; j < method.params.length; j++) {
+        var p = method.params[j];
+        var val = paramValues[p.name] || '';
+        if (val.startsWith('0x')) {
+          initialStack.push(val);
+        } else if (/^-?\d+$/.test(val)) {
+          initialStack.push(Number(val));
+        } else {
+          initialStack.push(val || '0x00');
+        }
+      }
+    }
+
+    // Add k=1 signature and preimage
+    initialStack.push('0x' + preimageResult.sigHex);
+    initialStack.push('0x' + preimageResult.preimageHex);
+
+    // Get the code portion of the locking script (before OP_RETURN)
+    var codePortion = chainEngine.getCodePortion(prep.prevUtxo.lockingScript);
+
+    // Load the unlock script into the editor for viewing
+    var unlockSource = chainEngine.project.methods.find(function(m) { return m.name === methodName; });
+    // Don't change editor - keep showing contract
+
+    // Run through interpreter: initial stack + unlock script + locking script code
+    logToConsole('Executing: unlocking + locking script...', 'info');
+
+    // Get unlock instructions
+    var unlockHex = chainEngine.methodHexMap[methodName] || '';
+
+    // Combine as: unlock script instructions, then locking script instructions
+    // But we feed them as initial stack + instructions to the interpreter
+    // The unlock script pushes params, sig, preimage onto stack
+    // The locking script (code portion) is what the interpreter runs
+
+    // Disassemble code portion back to camelCase for interpreter
+    // Actually, we should run the CODE portion through the interpreter directly
+    // with the initial stack values set up
+
+    // Get the contract source (with macros) and run it with the initial stack
+    var contractSource = '';
+    for (var key in chainEngine.project) {
+      if (key === 'contract') {
+        // Find the source
+        break;
+      }
+    }
+    // Use the contract source stored in project files
+    // We need access to the raw source for the interpreter (it handles macros itself)
+    // For now, get it from the editor
+    var contractScript = editor.getValue();
+
+    var result = await interpreter.run(contractScript, initialStack);
+
+    if (result.success) {
+      logToConsole('Transition succeeded!', 'success');
+      logToConsole('Final stack: [' + interpreter.mainStack.join(', ') + ']', 'info');
+
+      // Advance chain state
+      chainEngine.advanceChain(methodName, newState, txResult.txid);
+
+      if (isTerminal) {
+        logToConsole('Chain terminated (terminal method)', 'warning');
+      } else {
+        logToConsole('State after transition: ' + JSON.stringify(chainEngine.currentState), 'info');
+      }
+
+      // Update UI
+      renderChainPanel();
+      updateUI();
+    } else {
+      logToConsole('Transition FAILED: ' + result.error, 'error');
+      updateUI();
+    }
+
+  } catch (err) {
+    logToConsole('Chain transition error: ' + err.message, 'error');
+  }
+}
+
+function resetChainState() {
+  if (!chainEngine.project) return;
+  chainEngine.resetChain();
+  renderChainPanel();
+  interpreter.reset();
+  updateUI();
+  logToConsole('Chain reset to initial state', 'info');
+}
+
+function viewMethodScript(methodName) {
+  // Load the method's unlock script into the editor
+  var method = chainEngine.getMethod(methodName);
+  if (!method) return;
+
+  // We don't have the raw source easily accessible here
+  // For now, show the compiled ASM
+  var hex = chainEngine.methodHexMap[methodName];
+  if (hex) {
+    logToConsole('Method ' + methodName + ' compiled hex: ' + hex, 'info');
+    logToConsole('Method ' + methodName + ' ASM: ' + disassemble(hex), 'info');
+  } else {
+    logToConsole('Method ' + methodName + ' has no unlock script (params-only)', 'info');
+  }
+}

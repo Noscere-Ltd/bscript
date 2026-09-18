@@ -97,6 +97,7 @@ ipcMain.handle('load-file', async (event) => {
       properties: ['openFile'],
       filters: [
         { name: 'Bitcoin Script', extensions: ['bscript'] },
+        { name: 'Chain Project', extensions: ['json'] },
         { name: 'Text Files', extensions: ['txt'] },
         { name: 'All Files', extensions: ['*'] }
       ],
@@ -705,6 +706,109 @@ ipcMain.handle('runar-compute-preimage', async (event, { txHex, inputIndex, lock
     const { computeOpPushTx } = await getRunarSdk();
     const result = computeOpPushTx(txHex, inputIndex, lockingScriptHex, satoshis, codeSeparatorIndex);
     return { success: true, sigHex: result.sigHex, preimageHex: result.preimageHex };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Chain Mode - Project loading and transaction building
+// ---------------------------------------------------------------------------
+
+ipcMain.handle('open-chain-dialog', async (event) => {
+  try {
+    const defaultPath = lastUsedDirectory || path.join(__dirname, '../../examples');
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      filters: [
+        { name: 'Chain Project', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      defaultPath: defaultPath
+    });
+    if (result.canceled) {
+      return { success: false, canceled: true };
+    }
+    const filePath = result.filePaths[0];
+    lastUsedDirectory = path.dirname(filePath);
+    return { success: true, filePath: filePath };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('load-chain-project', async (event, filePath) => {
+  try {
+    const projectDir = path.dirname(filePath);
+    const projectContent = await fs.readFile(filePath, 'utf-8');
+    const project = JSON.parse(projectContent);
+
+    // Read all referenced .bscript files
+    const bscriptFiles = {};
+
+    // Read contract file
+    if (project.contract) {
+      const contractPath = path.resolve(projectDir, project.contract);
+      bscriptFiles[project.contract] = await fs.readFile(contractPath, 'utf-8');
+    }
+
+    // Read all method unlock scripts
+    if (project.methods) {
+      for (const method of project.methods) {
+        if (method.unlock) {
+          const unlockPath = path.resolve(projectDir, method.unlock);
+          try {
+            bscriptFiles[method.unlock] = await fs.readFile(unlockPath, 'utf-8');
+          } catch (e) {
+            // Empty unlock script is valid
+            bscriptFiles[method.unlock] = '';
+          }
+        }
+      }
+    }
+
+    return {
+      success: true,
+      project: project,
+      bscriptFiles: bscriptFiles,
+      projectPath: filePath
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('build-chain-tx', async (event, { prevTxid, prevVout, prevSatoshis, prevLockingScript, newLockingScript, newSatoshis }) => {
+  try {
+    const { Transaction, LockingScript, UnlockingScript } = getBsvSdk();
+
+    const tx = new Transaction();
+
+    // Add input (spending the previous UTXO)
+    tx.addInput({
+      sourceTXID: prevTxid,
+      sourceOutputIndex: prevVout,
+      unlockingScript: new UnlockingScript(),
+      sequence: 0xffffffff
+    });
+
+    // Add continuation output (non-terminal) or nothing (terminal)
+    if (newLockingScript) {
+      tx.addOutput({
+        satoshis: newSatoshis,
+        lockingScript: LockingScript.fromHex(newLockingScript)
+      });
+    }
+
+    const txHex = tx.toHex();
+    // Compute a txid for chain tracking (hash256 of tx hex)
+    const { Hash } = getBsvSdk();
+    const txBytes = Buffer.from(txHex, 'hex');
+    const txidBytes = Buffer.from(Hash.hash256(txBytes));
+    // Reverse for display (Bitcoin txids are displayed reversed)
+    const txid = Array.from(txidBytes).reverse().map(b => b.toString(16).padStart(2, '0')).join('');
+
+    return { success: true, txHex: txHex, txid: txid };
   } catch (error) {
     return { success: false, error: error.message };
   }

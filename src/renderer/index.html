@@ -41,6 +41,12 @@
           </svg>
           Verify
         </button>
+        <button id="btn-chain-mode" class="btn" title="Toggle Chain Mode">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M4 1h8v2H4V1zm0 12h8v2H4v-2zm-2 -4h12v2H2V9zm2 -4h8v2H4V5z"/>
+          </svg>
+          Chain
+        </button>
         <button id="btn-help" class="btn" title="Show Help">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
@@ -356,7 +362,7 @@
     <!-- Main Content Area -->
     <div class="main-content">
       <!-- Left Panel: Initial Stack Input -->
-      <div class="panel panel-stack-input">
+      <div id="panel-stack-input" class="panel panel-stack-input">
         <div class="panel-header">
           <span class="panel-title">Initial Stack</span>
           <button id="btn-clear-stack" class="btn-small" title="Clear initial stack">Clear</button>
@@ -376,6 +382,53 @@
             <h4>Preview (Top → Bottom)</h4>
             <div id="stack-preview" class="stack-preview-list">
               <div class="stack-empty">No initial values</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chain Panel (hidden by default, shown in Chain Mode) -->
+      <div id="chain-panel-main" class="panel panel-chain" style="display: none;">
+        <div class="panel-header">
+          <span class="panel-title" id="chain-project-name">Chain Mode</span>
+          <span class="chain-step-badge" id="chain-step-count">Step 0</span>
+        </div>
+        <div class="chain-content">
+          <!-- Current State -->
+          <div class="chain-section">
+            <h4>State</h4>
+            <div id="chain-state-fields" class="chain-state-fields">
+              <div class="stack-empty">No project loaded</div>
+            </div>
+          </div>
+
+          <!-- New State Input -->
+          <div class="chain-section">
+            <h4>New State (JSON)</h4>
+            <textarea id="chain-new-state-input" class="chain-state-textarea"
+                      placeholder='{"count": 1}' spellcheck="false"></textarea>
+          </div>
+
+          <!-- Method Selection -->
+          <div class="chain-section">
+            <h4>Method</h4>
+            <select id="chain-method-select" class="chain-method-select">
+              <option>No methods</option>
+            </select>
+            <div id="chain-method-params" class="chain-method-params"></div>
+          </div>
+
+          <!-- Actions -->
+          <div class="chain-actions">
+            <button id="btn-chain-run" class="btn btn-primary" style="flex:1;">Run Transition</button>
+            <button id="btn-chain-reset" class="btn" style="flex:1;">Reset</button>
+          </div>
+
+          <!-- Chain History -->
+          <div class="chain-section">
+            <h4>History</h4>
+            <div id="chain-history" class="chain-history">
+              <div class="stack-empty">No transitions yet</div>
             </div>
           </div>
         </div>
@@ -504,9 +557,21 @@
           document.body.appendChild(script2b);
 
           script2b.onload = function() {
-            const script3 = document.createElement('script');
-            script3.src = 'app.js';
-            document.body.appendChild(script3);
+            const script2c = document.createElement('script');
+            script2c.src = 'chain.js';
+            document.body.appendChild(script2c);
+
+            script2c.onload = function() {
+              const script2d = document.createElement('script');
+              script2d.src = 'chain-ui.js';
+              document.body.appendChild(script2d);
+
+              script2d.onload = function() {
+                const script3 = document.createElement('script');
+                script3.src = 'app.js';
+                document.body.appendChild(script3);
+              };
+            };
           };
         };
       };

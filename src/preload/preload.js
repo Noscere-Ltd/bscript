@@ -10,6 +10,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadFile: () => ipcRenderer.invoke('load-file'),
   saveFile: (params) => ipcRenderer.invoke('save-file', params),
 
+  // Chain mode
+  openChainDialog: () => ipcRenderer.invoke('open-chain-dialog'),
+  loadChainProject: (filePath) => ipcRenderer.invoke('load-chain-project', filePath),
+  buildChainTx: (params) => ipcRenderer.invoke('build-chain-tx', params),
+
   // Import system
   resolveImportPath: (currentFilePath, importPath) =>
     ipcRenderer.invoke('resolve-import-path', currentFilePath, importPath),

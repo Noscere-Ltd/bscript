@@ -1,0 +1,3 @@
+// Decrement method - Unlocking Script
+// The chain engine auto-injects [k1_sig, preimage] onto the stack.
+// No additional operations needed for a simple counter.

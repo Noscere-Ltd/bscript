@@ -85,6 +85,7 @@ require(['vs/editor/editor.main'], function () {
     window.electronAPI.onMenuAction('menu-shortcuts', showKeyboardShortcuts);
     window.electronAPI.onMenuAction('menu-verify-script', verifyScript);
     window.electronAPI.onMenuAction('menu-deploy-script', showDeploy);
+    window.electronAPI.onMenuAction('menu-open-chain', openChainProject);
   }
 
   // Initial UI update
@@ -166,6 +167,20 @@ function setupEventHandlers() {
 
   // Verify button
   document.getElementById('btn-verify').addEventListener('click', verifyScript);
+
+  // Chain mode
+  document.getElementById('btn-chain-mode').addEventListener('click', function() {
+    if (chainModeActive) {
+      toggleChainMode(false);
+    } else if (chainEngine.project) {
+      toggleChainMode(true);
+    } else {
+      openChainProject();
+    }
+  });
+  document.getElementById('btn-chain-run').addEventListener('click', runChainTransition);
+  document.getElementById('btn-chain-reset').addEventListener('click', resetChainState);
+  document.getElementById('chain-method-select').addEventListener('change', renderMethodParams);
 
   // Settings event listeners
   document.getElementById('enable-signatures').addEventListener('change', toggleSignatures);

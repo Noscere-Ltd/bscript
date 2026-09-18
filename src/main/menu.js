@@ -38,6 +38,10 @@ function createMenu(mainWindow) {
           click: () => mainWindow.webContents.send('menu-open-file')
         },
         {
+          label: 'Open Chain Project...',
+          click: () => mainWindow.webContents.send('menu-open-chain')
+        },
+        {
           label: 'Open Recent',
           role: 'recentdocuments',
           submenu: [

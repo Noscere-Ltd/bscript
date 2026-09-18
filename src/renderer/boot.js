@@ -9,6 +9,7 @@ const APP_SCRIPTS = [
   'interpreter.js',
   'syntax.js',
   'push-tx-binding.js',
+  'stack-input.js',
   'compiler.js',
   'chain.js',
   'chain-ui.js',

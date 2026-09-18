@@ -249,22 +249,19 @@ function updateStackPreview() {
   const input = document.getElementById('initial-stack-input').value;
   const previewContainer = document.getElementById('stack-preview');
 
-  // Split by whitespace (space, tab, newline) - matching Bitcoin Script syntax
-  const items = input.split(/\s+/)
-    .map(item => item.trim())
-    .filter(item => item.length > 0);
+  const items = splitStackInput(input);
 
   if (items.length === 0) {
     replaceWithPlaceholder(previewContainer, 'stack-empty', 'No initial values');
     return;
   }
 
-  // Parse and display stack (reversed to show top to bottom). The items are
-  // whatever the user typed, so they go in as text.
+  // Parse and display stack (reversed to show top to bottom).
   previewContainer.textContent = '';
   [...items].reverse().forEach((value, index) => {
     const actualIndex = items.length - 1 - index;
-    const type = isNaN(Number(value)) ? 'string' : 'number';
+    const parsed = parseStackItem(value);
+    const type = parsed.error ? 'invalid' : parsed.type;
 
     previewContainer.appendChild(elementWithSpans('div', 'stack-preview-item', [
       ['stack-preview-index', `[${actualIndex}]`],
@@ -277,17 +274,18 @@ function updateStackPreview() {
 // Get initial stack values from input
 function getInitialStackValues() {
   const input = document.getElementById('initial-stack-input').value;
+  const values = [];
 
-  // Split by whitespace (space, tab, newline) - matching Bitcoin Script syntax
-  const items = input.split(/\s+/)
-    .map(item => item.trim())
-    .filter(item => item.length > 0);
+  for (const item of splitStackInput(input)) {
+    const parsed = parseStackItem(item);
+    if (parsed.error) {
+      logToConsole(parsed.error, 'error');
+      continue;
+    }
+    values.push(parsed.value);
+  }
 
-  return items.map(item => {
-    // Try to parse as number, otherwise keep as string
-    const num = Number(item);
-    return isNaN(num) ? item : num;
-  });
+  return values;
 }
 
 // In chain mode the stack is derived from the chain state, not the input panel
@@ -503,20 +501,8 @@ async function verifyScript() {
     const scriptHex = compileInstructionsToHex(tempInterpreter.instructions);
 
     // Step 3: Encode initial stack as hex push data for ScriptVM
-    const initialStackHex = initialStack.map(v => {
-      if (typeof v === 'number') {
-        const encoded = encodeScriptNumber(BigInt(v));
-        return bytesToHex(encoded);
-      }
-      // String/hex values - pass as-is if hex, otherwise encode as UTF-8 bytes
-      if (typeof v === 'string' && /^[0-9a-fA-F]*$/.test(v) && v.length % 2 === 0) {
-        return v;
-      }
-      // Encode string as bytes
-      const encoder = new TextEncoder();
-      const bytes = encoder.encode(String(v));
-      return bytesToHex(bytes);
-    });
+    // Same conversion the interpreter uses, so both engines see one stack
+    const initialStackHex = initialStack.map(v => interpreter.toHexString(v));
 
     // Step 4: Send to ScriptVM via IPC
     if (!window.runar || !window.runar.verifyScript) {

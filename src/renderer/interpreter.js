@@ -539,6 +539,8 @@ class ScriptInterpreter {
       'numEqual': () => this.op_numequal(),
       'numEqualVerify': () => this.op_numequalverify(),
       'numNotEqual': () => this.op_numnotequal(),
+      'booland': () => this.op_booland(),
+      'boolor': () => this.op_boolor(),
 
       // String operations (BSV restored)
       'cat': () => this.op_cat(),
@@ -1078,6 +1080,20 @@ class ScriptInterpreter {
     const a = this.toNumber(this.popStack());
     this.pushStack(a >= b ? 1 : 0);
     this.addHistory('greaterThanOrEqual', `${a} >= ${b}`);
+  }
+
+  op_booland() {
+    const b = this.toNumber(this.popStack());
+    const a = this.toNumber(this.popStack());
+    this.pushStack(a !== 0 && b !== 0 ? 1 : 0);
+    this.addHistory('booland', `${a} && ${b}`);
+  }
+
+  op_boolor() {
+    const b = this.toNumber(this.popStack());
+    const a = this.toNumber(this.popStack());
+    this.pushStack(a !== 0 || b !== 0 ? 1 : 0);
+    this.addHistory('boolor', `${a} || ${b}`);
   }
 
   op_numequal() {

@@ -183,6 +183,19 @@ function bytesToHex(bytes) {
 function emitPushData(dataBytes) {
   var out = [];
   var len = dataBytes.length;
+  // Minimal push: the shortest encoding that yields the same stack item.
+  // An empty item is OP_0, a single byte 1-16 is OP_1..OP_16, and a single
+  // 0x81 is OP_1NEGATE. Nodes reject any longer encoding of these as
+  // non-minimal, so emitting one would produce a script that cannot be spent.
+  if (len === 0) {
+    return [0x00];
+  }
+  if (len === 1 && dataBytes[0] >= 1 && dataBytes[0] <= 16) {
+    return [0x50 + dataBytes[0]];
+  }
+  if (len === 1 && dataBytes[0] === 0x81) {
+    return [0x4f];
+  }
   if (len >= 1 && len <= 75) {
     out.push(len);
   } else if (len >= 76 && len <= 255) {

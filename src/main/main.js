@@ -289,6 +289,7 @@ ipcMain.handle('bsv-hash160', async (event, data) => {
 // These run in the main process where Node modules are available
 
 const { sighashFor, verifySig, verifyMultiSig } = require('./signature');
+const { pushDataHex } = require('../shared/push-data');
 
 ipcMain.handle('bsv-verify-sig', async (event, params) => verifySig(params));
 
@@ -340,21 +341,8 @@ ipcMain.handle('runar-verify-script', async (event, { scriptHex, initialStackHex
 
     // Build unlocking script from initial stack values (push each as data)
     let unlockingHex = '';
-    if (initialStackHex && initialStackHex.length > 0) {
-      for (const itemHex of initialStackHex) {
-        if (!itemHex || itemHex.length === 0) {
-          unlockingHex += '00'; // OP_0
-        } else {
-          const byteLen = itemHex.length / 2;
-          if (byteLen <= 75) {
-            unlockingHex += byteLen.toString(16).padStart(2, '0') + itemHex;
-          } else if (byteLen <= 255) {
-            unlockingHex += '4c' + byteLen.toString(16).padStart(2, '0') + itemHex;
-          } else {
-            unlockingHex += '4d' + (byteLen & 0xff).toString(16).padStart(2, '0') + ((byteLen >> 8) & 0xff).toString(16).padStart(2, '0') + itemHex;
-          }
-        }
-      }
+    for (const itemHex of initialStackHex || []) {
+      unlockingHex += pushDataHex(itemHex || '');
     }
 
     const vm = new ScriptVM();

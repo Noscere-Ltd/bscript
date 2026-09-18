@@ -2,9 +2,10 @@
 // lives in a file rather than inline so the CSP can drop 'unsafe-inline' from
 // script-src.
 //
-// Order matters: escape-html.js and push-tx-binding.js define globals the
-// scripts after them read at load time.
+// Order matters: push-data.js, escape-html.js and push-tx-binding.js define
+// globals the scripts after them read at load time.
 const APP_SCRIPTS = [
+  '../shared/push-data.js',
   'escape-html.js',
   'interpreter.js',
   'syntax.js',

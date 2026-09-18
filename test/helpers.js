@@ -53,6 +53,7 @@ const renderer = (name) =>
 // The compiler goes on the global object, because interpreter.js reads it
 // there the way it does in the renderer, where both are global scripts.
 const { compileInstructionsToHex, disassemble } = new Function(
+  fs.readFileSync(path.join(__dirname, '..', 'src', 'shared', 'push-data.js'), 'utf8') +
   renderer('push-tx-binding.js') + renderer('compiler.js') +
   '\nglobalThis.compileInstructionsToHex = compileInstructionsToHex;' +
   '\nreturn { compileInstructionsToHex, disassemble };'

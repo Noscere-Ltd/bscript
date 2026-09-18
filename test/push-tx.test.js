@@ -114,6 +114,52 @@ test('covenant-locktime rejects a real preimage that does not meet the covenant'
   }
 });
 
+// Every shipped covenant: a preimage that does not match the spend is
+// rejected by the binding itself, whatever the covenant around it checks.
+const BINDING_REJECTION = /OP_CHECKSIGVERIFY requires that a valid signature is provided/;
+
+const COVENANTS = [
+  { name: 'covenant-locktime', extra: [], stoppedBy: BINDING_REJECTION },
+  { name: 'covenant-output-hash', extra: [], stoppedBy: BINDING_REJECTION },
+  { name: 'op-push-tx', extra: [], stoppedBy: BINDING_REJECTION },
+  // This one checks the owner's signature before it looks at the preimage,
+  // so consensus stops the spend one step earlier.
+  { name: 'covenant-rate-limit', extra: ['0xaa'], stoppedBy: /signature format is invalid/ }
+];
+
+for (const { name, extra, stoppedBy } of COVENANTS) {
+  test(`${name} rejects a forged preimage at both versions`, async () => {
+    const locking = await compile(fs.readFileSync(path.join(EXAMPLES, `${name}.bscript`), 'utf8'));
+
+    for (const version of [1, 2]) {
+      const ctx = context({ version, lockTime: 1000, satoshis: 20000 });
+      const real = preimageOf(ctx, locking);
+      // Flip the first byte of nLocktime, which every one of these reads
+      const forged = real.slice(0, real.length - 16) + 'ff' + real.slice(real.length - 14);
+      assert.notStrictEqual(forged, real);
+
+      const unlocking = compileInstructionsToHex([...extra, '0x' + forged]);
+      const spend = new Spend({
+        ...ctx,
+        lockingScript: LockingScript.fromHex(locking),
+        unlockingScript: UnlockingScript.fromHex(unlocking)
+      });
+
+      let error = null;
+      try {
+        spend.validate();
+      } catch (err) {
+        error = err.message;
+      }
+
+      assert.notStrictEqual(error, null,
+        `${name} accepted a forged preimage at transaction version ${version}`);
+      assert.match(error, stoppedBy,
+        `${name} at version ${version} was rejected for an unexpected reason`);
+    }
+  });
+}
+
 test('a counter-chain transition validates', async () => {
   const dir = path.join(EXAMPLES, 'counter-chain');
   const contract = fs.readFileSync(path.join(dir, 'counter.bscript'), 'utf8');

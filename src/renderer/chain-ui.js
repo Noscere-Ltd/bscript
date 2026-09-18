@@ -186,25 +186,26 @@ function collectNewState() {
   return newState;
 }
 
-async function runChainTransition() {
+// Build the stack the contract expects for the next transition:
+// [method_params..., preimage, k1_sig]. Returns null (after logging) if it
+// cannot be built. Used by Run Transition and by the Run/Step buttons.
+async function prepareChainRun() {
   if (!chainEngine.project) {
     logToConsole('No chain project loaded', 'warning');
-    return;
+    return null;
   }
 
   if (!chainEngine.currentUtxo) {
     logToConsole('Chain has terminated. Reset to continue.', 'warning');
-    return;
+    return null;
   }
 
   var methodName = document.getElementById('chain-method-select').value;
   var method = chainEngine.getMethod(methodName);
   if (!method) {
     logToConsole('Unknown method: ' + methodName, 'error');
-    return;
+    return null;
   }
-
-  logToConsole('--- Chain Transition: ' + methodName + ' (Step ' + (chainEngine.stepCount + 1) + ') ---', 'info');
 
   try {
     // Collect method params from UI
@@ -234,7 +235,7 @@ async function runChainTransition() {
 
     if (!txResult.success) {
       logToConsole('Failed to build transaction: ' + txResult.error, 'error');
-      return;
+      return null;
     }
 
     logToConsole('Transaction built: ' + txResult.txid.substring(0, 16) + '...', 'info');
@@ -251,10 +252,10 @@ async function runChainTransition() {
 
     if (!preimageResult.success) {
       logToConsole('Failed to compute preimage: ' + preimageResult.error, 'error');
-      return;
+      return null;
     }
 
-    // Build initial stack: [method_params..., k1_sig, preimage]
+    // Build initial stack (bottom to top): [method_params..., preimage, k1_sig]
     var initialStack = [];
 
     // Add method parameter values
@@ -272,70 +273,52 @@ async function runChainTransition() {
       }
     }
 
-    // Add k=1 signature and preimage
-    initialStack.push('0x' + preimageResult.sigHex);
+    // Add preimage and k=1 signature. checkPreimage expands to
+    // `codeSeparator <G> checkSigVerify`, which pops the pubkey then the
+    // signature, so the signature must be on top and the preimage below it.
     initialStack.push('0x' + preimageResult.preimageHex);
+    initialStack.push('0x' + preimageResult.sigHex);
 
-    // Get the code portion of the locking script (before OP_RETURN)
-    var codePortion = chainEngine.getCodePortion(prep.prevUtxo.lockingScript);
-
-    // Load the unlock script into the editor for viewing
-    var unlockSource = chainEngine.project.methods.find(function(m) { return m.name === methodName; });
-    // Don't change editor - keep showing contract
-
-    // Run through interpreter: initial stack + unlock script + locking script code
-    logToConsole('Executing: unlocking + locking script...', 'info');
-
-    // Get unlock instructions
-    var unlockHex = chainEngine.methodHexMap[methodName] || '';
-
-    // Combine as: unlock script instructions, then locking script instructions
-    // But we feed them as initial stack + instructions to the interpreter
-    // The unlock script pushes params, sig, preimage onto stack
-    // The locking script (code portion) is what the interpreter runs
-
-    // Disassemble code portion back to camelCase for interpreter
-    // Actually, we should run the CODE portion through the interpreter directly
-    // with the initial stack values set up
-
-    // Get the contract source (with macros) and run it with the initial stack
-    var contractSource = '';
-    for (var key in chainEngine.project) {
-      if (key === 'contract') {
-        // Find the source
-        break;
-      }
-    }
-    // Use the contract source stored in project files
-    // We need access to the raw source for the interpreter (it handles macros itself)
-    // For now, get it from the editor
-    var contractScript = editor.getValue();
-
-    var result = await interpreter.run(contractScript, initialStack);
-
-    if (result.success) {
-      logToConsole('Transition succeeded!', 'success');
-      logToConsole('Final stack: [' + interpreter.mainStack.join(', ') + ']', 'info');
-
-      // Advance chain state
-      chainEngine.advanceChain(methodName, newState, txResult.txid);
-
-      if (isTerminal) {
-        logToConsole('Chain terminated (terminal method)', 'warning');
-      } else {
-        logToConsole('State after transition: ' + JSON.stringify(chainEngine.currentState), 'info');
-      }
-
-      // Update UI
-      renderChainPanel();
-      updateUI();
-    } else {
-      logToConsole('Transition FAILED: ' + result.error, 'error');
-      updateUI();
-    }
+    return {
+      methodName: methodName,
+      newState: newState,
+      isTerminal: isTerminal,
+      initialStack: initialStack,
+      txid: txResult.txid
+    };
 
   } catch (err) {
     logToConsole('Chain transition error: ' + err.message, 'error');
+    return null;
+  }
+}
+
+async function runChainTransition() {
+  logToConsole('--- Chain Transition: Step ' + (chainEngine.stepCount + 1) + ' ---', 'info');
+
+  var run = await prepareChainRun();
+  if (!run) return;
+
+  logToConsole('Executing contract...', 'info');
+  var result = await interpreter.run(editor.getValue(), run.initialStack);
+
+  if (result.success) {
+    logToConsole('Transition succeeded!', 'success');
+    logToConsole('Final stack: [' + interpreter.mainStack.join(', ') + ']', 'info');
+
+    chainEngine.advanceChain(run.methodName, run.newState, run.txid);
+
+    if (run.isTerminal) {
+      logToConsole('Chain terminated (terminal method)', 'warning');
+    } else {
+      logToConsole('State after transition: ' + JSON.stringify(chainEngine.currentState), 'info');
+    }
+
+    renderChainPanel();
+    updateUI();
+  } else {
+    logToConsole('Transition FAILED: ' + result.error, 'error');
+    updateUI();
   }
 }
 

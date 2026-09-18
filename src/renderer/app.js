@@ -296,6 +296,16 @@ function getInitialStackValues() {
   });
 }
 
+// In chain mode the stack is derived from the chain state, not the input panel
+async function resolveInitialStack() {
+  if (typeof chainModeActive !== 'undefined' && chainModeActive) {
+    const run = await prepareChainRun();
+    if (run) return run.initialStack;
+    logToConsole('Falling back to the manual initial stack', 'warning');
+  }
+  return getInitialStackValues();
+}
+
 // Run entire script
 async function runScript() {
   const script = editor.getValue();
@@ -311,7 +321,7 @@ async function runScript() {
     hideErrorToast(); // Clear any previous errors
 
     // Get initial stack values
-    const initialStack = getInitialStackValues();
+    const initialStack = await resolveInitialStack();
     if (initialStack.length > 0) {
       logToConsole(`Initial stack: [${initialStack.join(', ')}]`, 'info');
     }
@@ -359,7 +369,7 @@ async function stepScript() {
     }
 
     // Get initial stack values
-    const initialStack = getInitialStackValues();
+    const initialStack = await resolveInitialStack();
     if (initialStack.length > 0) {
       logToConsole(`Initial stack: [${initialStack.join(', ')}]`, 'info');
     }

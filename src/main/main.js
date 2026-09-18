@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const https = require('https');
 const { createMenu } = require('./menu');
+const { toHashBuffer } = require('./hash-input');
 
 // Lazy load BSV SDK modules when needed (loaded on first use)
 // This avoids potential conflicts with Electron's module loading
@@ -218,31 +219,31 @@ ipcMain.handle('read-import-file', async (event, filePath) => {
 
 ipcMain.handle('bsv-sha256', async (event, data) => {
   const { Hash } = getBsvSdk();
-  const buffer = Buffer.from(data, 'utf8');
+  const buffer = toHashBuffer(data);
   return Buffer.from(Hash.sha256(buffer)).toString('hex');
 });
 
 ipcMain.handle('bsv-sha1', async (event, data) => {
   const { Hash } = getBsvSdk();
-  const buffer = Buffer.from(data, 'utf8');
+  const buffer = toHashBuffer(data);
   return Buffer.from(Hash.sha1(buffer)).toString('hex');
 });
 
 ipcMain.handle('bsv-ripemd160', async (event, data) => {
   const { Hash } = getBsvSdk();
-  const buffer = Buffer.from(data, 'utf8');
+  const buffer = toHashBuffer(data);
   return Buffer.from(Hash.ripemd160(buffer)).toString('hex');
 });
 
 ipcMain.handle('bsv-hash256', async (event, data) => {
   const { Hash } = getBsvSdk();
-  const buffer = Buffer.from(data, 'utf8');
+  const buffer = toHashBuffer(data);
   return Buffer.from(Hash.hash256(buffer)).toString('hex');
 });
 
 ipcMain.handle('bsv-hash160', async (event, data) => {
   const { Hash } = getBsvSdk();
-  const buffer = Buffer.from(data, 'utf8');
+  const buffer = toHashBuffer(data);
   return Buffer.from(Hash.hash160(buffer)).toString('hex');
 });
 

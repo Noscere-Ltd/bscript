@@ -5,11 +5,11 @@
 // OP_PUSH_TX, then the locktime field is extracted and checked.
 //
 // Initial stack (bottom to top):
-//   <k=1 signature>
 //   <preimage>
+//   <k=1 signature>
 //
 // In simulated mode, set initial stack to:
-//   0xdeadbeef 0x02000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001ab0000000000000000e803000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbe803000041000000
+//   0x02000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001ab0000000000000000e803000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbe803000041000000 0xdeadbeef
 //   (This is a fake preimage with locktime = 1000 at the correct offset)
 
 // Verify the preimage is authentic

@@ -5,11 +5,15 @@
 // Toggle "ASM" view to see the compiled output.
 //
 // Initial stack (bottom to top):
-//   <k=1 signature>   DER signature from private key k=1
 //   <preimage>        BIP-143 sighash preimage
+//   <k=1 signature>   DER signature from private key k=1
 //
-// In simulated mode (default), use any two hex values:
-//   0xdead 0xbeef
+// checkSigVerify pops the pubkey then the signature, so the signature sits
+// on top and the preimage is left behind for the extractors.
+//
+// In simulated mode (default), the extractors slice real byte offsets, so the
+// first item must be a full-length dummy preimage:
+//   0x0200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001ab00000000000000000000000000000000aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd0000000041000000 0xbeef
 //
 // How OP_PUSH_TX works:
 //   checkPreimage expands to:

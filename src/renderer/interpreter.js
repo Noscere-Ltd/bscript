@@ -19,7 +19,7 @@ class ScriptInterpreter {
     this.error = null;
     this.breakpoints = new Set();
     this.skipIPIncrement = false; // Flag to prevent double-increment in flow control
-    this.skipElse = false; // Flag to indicate we should skip the else block (coming from true if)
+    this.condStack = []; // One entry per open if/notIf block: is that branch taken?
     this.namedImports = {}; // Store named imports for later expansion
 
     // Settings (preserved across resets)
@@ -56,6 +56,45 @@ class ScriptInterpreter {
     }
   }
 
+  // A stack item holding bytes, written as 0x-prefixed hex
+  isHexValue(value) {
+    return typeof value === 'string' && /^0x[0-9a-fA-F]*$/.test(value);
+  }
+
+  // Encode a number as Bitcoin Script does: little-endian, sign-magnitude,
+  // minimally encoded, with zero as no bytes at all
+  numToHex(value) {
+    let magnitude = Math.abs(Math.trunc(value));
+    const bytes = [];
+    while (magnitude > 0) {
+      bytes.push(magnitude % 256);
+      magnitude = Math.floor(magnitude / 256);
+    }
+    if (bytes.length === 0) return '';
+    if (bytes[bytes.length - 1] & 0x80) {
+      bytes.push(value < 0 ? 0x80 : 0x00);
+    } else if (value < 0) {
+      bytes[bytes.length - 1] |= 0x80;
+    }
+    return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // Decode little-endian sign-magnitude bytes back to a number
+  hexToNum(hex) {
+    const byteCount = Math.floor(hex.length / 2);
+    let num = 0;
+    let negative = false;
+    for (let i = byteCount - 1; i >= 0; i--) {
+      let byte = parseInt(hex.substr(i * 2, 2), 16);
+      if (i === byteCount - 1 && (byte & 0x80)) {
+        negative = true;
+        byte &= 0x7f;
+      }
+      num = num * 256 + byte;
+    }
+    return negative ? -num : num;
+  }
+
   // Convert stack value to hex string for signature verification
   toHexString(value) {
     if (typeof value === 'string') {
@@ -75,10 +114,7 @@ class ScriptInterpreter {
       return hex;
     }
     if (typeof value === 'number') {
-      // Convert number to minimal hex representation
-      if (value === 0) return '00';
-      const hex = Math.abs(value).toString(16);
-      return hex.length % 2 === 0 ? hex : '0' + hex;
+      return this.numToHex(value);
     }
     if (Array.isArray(value)) {
       return value.map(b => b.toString(16).padStart(2, '0')).join('');
@@ -322,7 +358,7 @@ class ScriptInterpreter {
   // Execute entire script
   async run(scriptText, initialStack = []) {
     try {
-      this.parse(scriptText, initialStack);
+      await this.parse(scriptText, initialStack);
       this.status = 'running';
 
       while (this.ip < this.instructions.length) {
@@ -330,6 +366,10 @@ class ScriptInterpreter {
         if (this.status === 'error') {
           return { success: false, error: this.error };
         }
+      }
+
+      if (this.condStack.length > 0) {
+        throw new Error(`Script ended with ${this.condStack.length} unclosed if block(s)`);
       }
 
       this.status = 'success';
@@ -344,12 +384,23 @@ class ScriptInterpreter {
   // Execute single instruction
   async step() {
     if (this.ip >= this.instructions.length) {
+      if (this.condStack.length > 0) {
+        this.status = 'error';
+        this.error = `Script ended with ${this.condStack.length} unclosed if block(s)`;
+        throw new Error(this.error);
+      }
       this.status = 'success';
       return false;
     }
 
     const instruction = this.instructions[this.ip];
     this.skipIPIncrement = false; // Reset flag before executing instruction
+
+    // Inside a branch that was not taken, only the conditionals themselves run
+    if (!this.branchExecuting() && !['if', 'notIf', 'else', 'endIf'].includes(instruction)) {
+      this.ip++;
+      return true;
+    }
 
     try {
       // Check if it's a number literal
@@ -544,16 +595,32 @@ class ScriptInterpreter {
   // Convert stack value to number
   toNumber(value) {
     if (typeof value === 'number') return value;
-    if (typeof value === 'string') return parseInt(value, 10);
     if (typeof value === 'boolean') return value ? 1 : 0;
-    throw new Error('Cannot convert to number');
+    if (typeof value === 'string') {
+      if (this.isHexValue(value)) return this.hexToNum(value.slice(2));
+      if (/^-?\d+$/.test(value.trim())) return parseInt(value, 10);
+    }
+    throw new Error(`Cannot convert '${value}' to a number`);
   }
 
-  // Convert stack value to boolean
+  // Convert stack value to boolean. Bytes are false when every byte is zero,
+  // where a lone sign bit in the last byte still counts as zero.
   toBool(value) {
     if (typeof value === 'boolean') return value;
     if (typeof value === 'number') return value !== 0;
-    if (typeof value === 'string') return value !== '' && value !== '0';
+    if (typeof value === 'string') {
+      if (this.isHexValue(value)) {
+        const hex = value.slice(2);
+        for (let i = 0; i < hex.length; i += 2) {
+          const byte = parseInt(hex.substr(i, 2), 16);
+          if (byte === 0) continue;
+          if (byte === 0x80 && i === hex.length - 2) continue;
+          return true;
+        }
+        return false;
+      }
+      return value !== '' && value !== '0';
+    }
     return false;
   }
 
@@ -575,73 +642,45 @@ class ScriptInterpreter {
     this.addHistory('nop', 'No operation');
   }
 
-  op_if() {
-    const condition = this.toBool(this.popStack());
-    this.addHistory('if', `Conditional branch: ${condition}`);
+  // Every instruction sits inside zero or more if/notIf blocks. It runs only
+  // when all of them were taken.
+  branchExecuting() {
+    return this.condStack.every(Boolean);
+  }
 
-    if (condition) {
-      // Condition is true, execute if-block and set flag to skip else-block
-      this.skipElse = true;
-    } else {
-      // Condition is false, skip to ELSE or ENDIF
-      let depth = 1;
-      while (this.ip < this.instructions.length && depth > 0) {
-        this.ip++;
-        const inst = this.instructions[this.ip];
-        if (inst === 'if' || inst === 'notIf') depth++;
-        else if (inst === 'endIf') depth--;
-        else if (inst === 'else' && depth === 1) break;
-      }
-      this.skipIPIncrement = true; // Signal that we've already adjusted IP
-      this.skipElse = false; // Don't skip else-block, we're entering it
+  openBranch(opcode, invert) {
+    let taken = false;
+    if (this.branchExecuting()) {
+      taken = this.toBool(this.popStack());
+      if (invert) taken = !taken;
     }
+    this.condStack.push(taken);
+    this.addHistory(opcode, `Conditional branch: ${taken}`);
+  }
+
+  op_if() {
+    this.openBranch('if', false);
   }
 
   op_notif() {
-    const condition = !this.toBool(this.popStack());
-    this.addHistory('notIf', `Conditional branch (inverted): ${condition}`);
-
-    if (condition) {
-      // Condition is true (inverted), execute if-block and set flag to skip else-block
-      this.skipElse = true;
-    } else {
-      // Condition is false (inverted), skip to ELSE or ENDIF
-      let depth = 1;
-      while (this.ip < this.instructions.length && depth > 0) {
-        this.ip++;
-        const inst = this.instructions[this.ip];
-        if (inst === 'if' || inst === 'notIf') depth++;
-        else if (inst === 'endIf') depth--;
-        else if (inst === 'else' && depth === 1) break;
-      }
-      this.skipIPIncrement = true; // Signal that we've already adjusted IP
-      this.skipElse = false; // Don't skip else-block, we're entering it
-    }
+    this.openBranch('notIf', true);
   }
 
   op_else() {
-    if (this.skipElse) {
-      // Coming from a true if-block, skip to ENDIF
-      let depth = 1;
-      while (this.ip < this.instructions.length && depth > 0) {
-        this.ip++;
-        const inst = this.instructions[this.ip];
-        if (inst === 'if' || inst === 'notIf') depth++;
-        else if (inst === 'endIf') depth--;
-      }
-      this.addHistory('else', 'Skip to endIf (if was true)');
-      this.skipIPIncrement = true; // Signal that we've already adjusted IP
-      this.skipElse = false; // Reset flag
-    } else {
-      // Coming from a false if-block, continue into else-block
-      this.addHistory('else', 'Enter else block (if was false)');
-      // Just continue to next instruction (don't skip)
+    if (this.condStack.length === 0) {
+      throw new Error("Cannot execute 'else' - no matching if");
     }
+    const taken = !this.condStack[this.condStack.length - 1];
+    this.condStack[this.condStack.length - 1] = taken;
+    this.addHistory('else', taken ? 'Enter else block' : 'Skip else block');
   }
 
   op_endif() {
+    if (this.condStack.length === 0) {
+      throw new Error("Cannot execute 'endIf' - no matching if");
+    }
+    this.condStack.pop();
     this.addHistory('endIf', 'End conditional block');
-    this.skipElse = false; // Reset flag for next conditional
   }
 
   op_verify() {
@@ -848,7 +887,7 @@ class ScriptInterpreter {
     const b = this.toNumber(this.popStack());
     const a = this.toNumber(this.popStack());
     if (b === 0) throw new Error('Division by zero');
-    this.pushStack(Math.floor(a / b));
+    this.pushStack(Math.trunc(a / b));
     this.addHistory('div', `${a} / ${b} = ${Math.floor(a / b)}`);
   }
 
@@ -919,52 +958,92 @@ class ScriptInterpreter {
   }
 
   // Bitwise operations
+  // Bitwise ops are bytewise in Bitcoin Script, and the two operands of
+  // and/or/xor must be the same size.
+  bitwisePair(name, combine) {
+    const b = this.toHexString(this.popStack());
+    const a = this.toHexString(this.popStack());
+    if (a.length !== b.length) {
+      throw new Error(`Cannot execute '${name}' - operands must be the same size (${a.length / 2} vs ${b.length / 2} bytes)`);
+    }
+    let out = '';
+    for (let i = 0; i < a.length; i += 2) {
+      const byte = combine(parseInt(a.substr(i, 2), 16), parseInt(b.substr(i, 2), 16));
+      out += (byte & 0xff).toString(16).padStart(2, '0');
+    }
+    this.pushStack('0x' + out);
+    this.addHistory(name, `0x${a} ${name} 0x${b} = 0x${out}`);
+  }
+
+  // Shift the whole byte string, keeping its length and filling with zeroes
+  shiftHex(hex, bits, left) {
+    if (bits < 0) throw new Error('Cannot shift by a negative number of bits');
+    const bytes = [];
+    for (let i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.substr(i, 2), 16));
+    const byteShift = Math.floor(bits / 8);
+    const bitShift = bits % 8;
+    const out = new Array(bytes.length).fill(0);
+
+    for (let i = 0; i < bytes.length; i++) {
+      const src = left ? i + byteShift : i - byteShift;
+      if (src < 0 || src >= bytes.length) continue;
+      let byte = left ? bytes[src] << bitShift : bytes[src] >> bitShift;
+      if (bitShift) {
+        const carry = left ? src + 1 : src - 1;
+        if (carry >= 0 && carry < bytes.length) {
+          byte |= left ? bytes[carry] >> (8 - bitShift) : bytes[carry] << (8 - bitShift);
+        }
+      }
+      out[i] = byte & 0xff;
+    }
+
+    return out.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
   op_and() {
-    const b = this.toNumber(this.popStack());
-    const a = this.toNumber(this.popStack());
-    this.pushStack(a & b);
-    this.addHistory('and', `${a} & ${b} = ${a & b}`);
+    this.bitwisePair('and', (x, y) => x & y);
   }
 
   op_or() {
-    const b = this.toNumber(this.popStack());
-    const a = this.toNumber(this.popStack());
-    this.pushStack(a | b);
-    this.addHistory('or', `${a} | ${b} = ${a | b}`);
+    this.bitwisePair('or', (x, y) => x | y);
   }
 
   op_xor() {
-    const b = this.toNumber(this.popStack());
-    const a = this.toNumber(this.popStack());
-    this.pushStack(a ^ b);
-    this.addHistory('xor', `${a} ^ ${b} = ${a ^ b}`);
+    this.bitwisePair('xor', (x, y) => x ^ y);
   }
 
   op_invert() {
-    const a = this.toNumber(this.popStack());
-    this.pushStack(~a);
-    this.addHistory('invert', `~${a} = ${~a}`);
+    const hex = this.toHexString(this.popStack());
+    let out = '';
+    for (let i = 0; i < hex.length; i += 2) {
+      out += ((~parseInt(hex.substr(i, 2), 16)) & 0xff).toString(16).padStart(2, '0');
+    }
+    this.pushStack('0x' + out);
+    this.addHistory('invert', `~0x${hex} = 0x${out}`);
   }
 
   op_lshift() {
     const n = this.toNumber(this.popStack());
-    const a = this.toNumber(this.popStack());
-    this.pushStack(a << n);
-    this.addHistory('lShift', `${a} << ${n} = ${a << n}`);
+    const hex = this.toHexString(this.popStack());
+    const out = this.shiftHex(hex, n, true);
+    this.pushStack('0x' + out);
+    this.addHistory('lShift', `0x${hex} << ${n} = 0x${out}`);
   }
 
   op_rshift() {
     const n = this.toNumber(this.popStack());
-    const a = this.toNumber(this.popStack());
-    this.pushStack(a >> n);
-    this.addHistory('rShift', `${a} >> ${n} = ${a >> n}`);
+    const hex = this.toHexString(this.popStack());
+    const out = this.shiftHex(hex, n, false);
+    this.pushStack('0x' + out);
+    this.addHistory('rShift', `0x${hex} >> ${n} = 0x${out}`);
   }
 
   // Comparison operations
   op_equal() {
     const b = this.popStack();
     const a = this.popStack();
-    this.pushStack(a === b ? 1 : 0);
+    const equal = this.toHexString(a).toLowerCase() === this.toHexString(b).toLowerCase();
+    this.pushStack(equal ? 1 : 0);
     this.addHistory('equal', `${a} == ${b}`);
   }
 
@@ -1022,42 +1101,55 @@ class ScriptInterpreter {
 
   // String operations (simplified implementations)
   op_cat() {
-    const b = String(this.popStack());
-    const a = String(this.popStack());
-    this.pushStack(a + b);
-    this.addHistory('cat', `Concatenate strings`);
+    const b = this.toHexString(this.popStack());
+    const a = this.toHexString(this.popStack());
+    this.pushStack('0x' + a + b);
+    this.addHistory('cat', `Concatenate ${a.length / 2} + ${b.length / 2} bytes`);
   }
 
   op_split() {
     const position = this.toNumber(this.popStack());
-    const str = String(this.popStack());
-    const left = str.substring(0, position);
-    const right = str.substring(position);
-    this.pushStack(left);
-    this.pushStack(right);
-    this.addHistory('split', `Split at position ${position}`);
+    const hex = this.toHexString(this.popStack());
+    if (position < 0 || position * 2 > hex.length) {
+      throw new Error(`Cannot split at byte ${position} - item is ${hex.length / 2} bytes`);
+    }
+    this.pushStack('0x' + hex.substring(0, position * 2));
+    this.pushStack('0x' + hex.substring(position * 2));
+    this.addHistory('split', `Split at byte ${position}`);
   }
 
+  // Little-endian, sign-magnitude byte encoding (Bitcoin Script number format)
   op_num2bin() {
     const size = this.toNumber(this.popStack());
     const num = this.toNumber(this.popStack());
-    const binary = num.toString(2).padStart(size * 8, '0');
-    this.pushStack(binary);
-    this.addHistory('num2bin', `Convert ${num} to binary`);
+    let value = Math.abs(num);
+    const bytes = [];
+    while (value > 0) {
+      bytes.push(value % 256);
+      value = Math.floor(value / 256);
+    }
+    if (bytes.length > size) {
+      throw new Error(`Cannot fit ${num} into ${size} bytes`);
+    }
+    while (bytes.length < size) bytes.push(0);
+    if (num < 0) bytes[size - 1] |= 0x80;
+    const hex = bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+    this.pushStack('0x' + hex);
+    this.addHistory('num2bin', `Convert ${num} to ${size} bytes`);
   }
 
   op_bin2num() {
-    const binary = String(this.popStack());
-    const num = parseInt(binary, 2);
+    const hex = this.toHexString(this.popStack());
+    const num = this.hexToNum(hex);
     this.pushStack(num);
-    this.addHistory('bin2num', `Convert binary to ${num}`);
+    this.addHistory('bin2num', `Convert ${hex.length / 2} bytes to ${num}`);
   }
 
   op_size() {
     const item = this.peekStack();
-    const size = String(item).length;
+    const size = this.toHexString(item).length / 2;
     this.pushStack(size);
-    this.addHistory('size', `Size: ${size}`);
+    this.addHistory('size', `Size: ${size} bytes`);
   }
 
   // Crypto operations using BSV SDK via IPC

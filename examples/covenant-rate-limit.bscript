@@ -13,11 +13,13 @@
 //
 // Initial stack (bottom to top):
 //   <owner_signature>
-//   <k=1 signature>
 //   <preimage>
+//   <k=1 signature>
 //
-// In simulated mode, set initial stack to:
-//   0xaa 0xbb 0xcc
+// In simulated mode, the extractors slice real byte offsets, so the middle
+// item must be a full-length dummy preimage. This one carries an input
+// amount of 10000 satoshis:
+//   0xaa 0x0200000000000000000000000000000000000000000000000000000000000000000000001111111111111111111111111111111111111111111111111111111111111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa76a914bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb88ac1027000000000000ffffffffcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccce803000041000000 0xcc
 
 // --- Phase 1: Verify owner signature ---
 // Rotate the owner sig to top
@@ -30,7 +32,7 @@
 checkSigVerify
 
 // --- Phase 2: Verify preimage ---
-// Stack now: [k1_sig, preimage]
+// Stack now: [preimage, k1_sig]
 checkPreimage
 
 // --- Phase 3: Extract and validate ---

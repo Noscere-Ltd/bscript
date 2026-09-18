@@ -1,32 +1,35 @@
 // Bitcoin Script Example: Bitwise Operations
-// Demonstrates bitwise logic opcodes
+// Demonstrates bitwise logic opcodes.
+// These operate on bytes, not on JavaScript-style 32-bit integers,
+// so they take and return byte strings. and/or/xor need operands of
+// equal length.
 
 // AND operation
-// Binary: 1100 (12) & 1010 (10) = 1000 (8)
+// Bytewise: 0x0c & 0x0a = 0x08
 12 10 and
-// Stack: [8]
+// Stack: [0x08]
 
 // OR operation
-// Binary: 1100 (12) | 1010 (10) = 1110 (14)
+// Bytewise: 0x0c | 0x0a = 0x0e
 12 10 or
-// Stack: [8, 14]
+// Stack: [0x08, 0x0e]
 
 // XOR operation
-// Binary: 1100 (12) ^ 1010 (10) = 0110 (6)
+// Bytewise: 0x0c ^ 0x0a = 0x06
 12 10 xor
-// Stack: [8, 14, 6]
+// Stack: [0x08, 0x0e, 0x06]
 
 // Left shift
-// Binary: 101 (5) << 2 = 10100 (20)
+// Bitwise over the bytes: 0x05 << 2 = 0x14
 5 2 lShift
-// Stack: [8, 14, 6, 20]
+// Stack: [0x08, 0x0e, 0x06, 0x14]
 
 // Right shift
-// Binary: 10100 (20) >> 2 = 101 (5)
+// Bitwise over the bytes: 0x14 >> 2 = 0x05
 20 2 rShift
-// Stack: [8, 14, 6, 20, 5]
+// Stack: [0x08, 0x0e, 0x06, 0x14, 0x05]
 
 // Invert (bitwise NOT)
-// ~5 = -6 (two's complement in 32-bit)
+// Bytewise complement: ~0x05 = 0xfa
 5 invert
-// Stack: [8, 14, 6, 20, 5, -6]
+// Stack: [0x08, 0x0e, 0x06, 0x14, 0x05, 0xfa]

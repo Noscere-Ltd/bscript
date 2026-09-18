@@ -1559,32 +1559,39 @@ class ScriptInterpreter {
 
     const preimageHex = this.toHexString(this.mainStack[this.mainStack.length - 1]);
 
-    if (this.txContextMode !== 'transaction') {
+    if (this.txContextMode !== 'transaction' && this.txContextMode !== 'sighash') {
       this.addHistory('checkPreimage', 'Preimage NOT verified: no transaction context');
       console.warn('checkPreimage: no transaction context, so the preimage was not verified. ' +
         'On chain the binding would reject a preimage that does not match the spending transaction.');
       return;
     }
 
-    // The binding pins the sighash type to ALL|FORKID, so the signed message
-    // is always BIP-143 over the whole locking script being spent.
-    const result = await window.bsv.computeSighash(
-      this.txContext.txHex,
-      this.txContext.inputIndex,
-      this.txContext.prevScriptHex,
-      this.txContext.satoshis,
-      ScriptInterpreter.SIGHASH_ALL_FORKID
-    );
-    if (!result.success) {
-      throw new Error(`checkPreimage: failed to compute sighash: ${result.error}`);
+    // A pre-computed sighash is the message itself, so the preimage is checked
+    // against it directly. Verify uses this to hand the simulator the same
+    // digest the ScriptVM signs.
+    let expected = this.txContext.sighash;
+
+    if (this.txContextMode === 'transaction') {
+      // The binding pins the sighash type to ALL|FORKID, so the signed message
+      // is always BIP-143 over the whole locking script being spent.
+      const result = await window.bsv.computeSighash(
+        this.txContext.txHex,
+        this.txContext.inputIndex,
+        this.txContext.prevScriptHex,
+        this.txContext.satoshis,
+        ScriptInterpreter.SIGHASH_ALL_FORKID
+      );
+      if (!result.success) {
+        throw new Error(`checkPreimage: failed to compute sighash: ${result.error}`);
+      }
+      expected = result.sighash;
     }
 
     const actual = (await window.bsv.hash256('0x' + preimageHex)).toLowerCase();
-    const expected = result.sighash.toLowerCase();
-    if (actual !== expected) {
+    if (actual !== expected.toLowerCase()) {
       throw new Error(
         `checkPreimage failed: the preimage on the stack hashes to ${actual}, ` +
-        `but the transaction being spent signs ${expected}`
+        `but the transaction being spent signs ${expected.toLowerCase()}`
       );
     }
 

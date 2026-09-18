@@ -290,6 +290,7 @@ ipcMain.handle('bsv-hash160', async (event, data) => {
 
 const { sighashFor, verifySig, verifyMultiSig } = require('./signature');
 const { pushDataHex } = require('../shared/push-data');
+const { preimageForScript } = require('./verify-preimage');
 
 ipcMain.handle('bsv-verify-sig', async (event, params) => verifySig(params));
 
@@ -334,6 +335,16 @@ async function getRunarSdk() {
 // ---------------------------------------------------------------------------
 // Rúnar ScriptVM Verification
 // ---------------------------------------------------------------------------
+
+// The preimage that satisfies the OP_PUSH_TX binding inside the ScriptVM,
+// which runs scripts against a synthetic transaction of its own.
+ipcMain.handle('runar-verify-preimage', async (event, { scriptHex }) => {
+  try {
+    return { success: true, ...(await preimageForScript(scriptHex)) };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
 
 ipcMain.handle('runar-verify-script', async (event, { scriptHex, initialStackHex }) => {
   try {

@@ -114,6 +114,27 @@
         </div>
 
         <div class="settings-section">
+          <h3>Verification</h3>
+          <p class="settings-description">
+            The Rúnar ScriptVM runs a script against a transaction of its own, so a
+            script using checkPreimage can only pass there with that transaction's
+            preimage on the stack. With this on, Verify substitutes it and hands the
+            simulator the same digest, so both engines check the same thing. With it
+            off, Verify says why it cannot compare such a script instead of comparing
+            it anyway.
+          </p>
+          <div class="settings-option">
+            <label class="toggle-switch">
+              <input type="checkbox" id="substitute-preimage" checked />
+              <span class="toggle-slider"></span>
+            </label>
+            <label for="substitute-preimage" class="settings-label">
+              Substitute a matching preimage when verifying
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-section">
           <h3>Transaction Version</h3>
           <p class="settings-description">
             Version 1 is the strict rule set: minimal number encoding and

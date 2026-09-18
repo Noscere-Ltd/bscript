@@ -13,6 +13,7 @@ const read = (name) => fs.readFileSync(path.join(SRC, name), 'utf8');
 
 const ChainEngine = new Function(
   fs.readFileSync(path.join(__dirname, '..', 'src', 'shared', 'push-data.js'), 'utf8') +
+  fs.readFileSync(path.join(__dirname, '..', 'src', 'shared', 'script-walk.js'), 'utf8') +
   read('push-tx-binding.js') + read('compiler.js') + read('chain.js') +
   '\nreturn ChainEngine;'
 )();

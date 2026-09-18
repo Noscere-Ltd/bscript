@@ -17,6 +17,7 @@ let settings = {
   enableSignatures: false,
   network: 'mainnet',
   txVersion: 1,
+  substitutePreimage: true,
   aiProvider: 'claude',
   aiApiKey: '',
   aiModel: ''
@@ -191,6 +192,8 @@ function setupEventHandlers() {
   document.querySelectorAll('input[name="tx-version"]').forEach(radio => {
     radio.addEventListener('change', changeTxVersion);
   });
+  document.getElementById('substitute-preimage')
+    .addEventListener('change', toggleSubstitutePreimage);
 
   // Transaction context event listeners
   document.querySelectorAll('input[name="tx-context-mode"]').forEach(radio => {
@@ -502,27 +505,60 @@ async function verifyScript() {
   try {
     logToConsole('Verifying script against Rúnar ScriptVM...', 'info');
 
-    // Step 1: Run through our interpreter
-    const initialStack = getInitialStackValues();
-    const localResult = await interpreter.run(script, initialStack);
-    const localStack = [...interpreter.mainStack];
-    const localSuccess = localResult.success;
-
-    // Step 2: Compile to hex
+    // Step 1: Compile, and decide what the comparison can honestly claim
     const tempInterpreter = new ScriptInterpreter();
     await tempInterpreter.parse(script, [], currentFilePath);
     const scriptHex = compileInstructionsToHex(tempInterpreter.instructions);
 
-    // Step 3: Encode initial stack as hex push data for ScriptVM
-    // Same conversion the interpreter uses, so both engines see one stack
-    const initialStackHex = initialStack.map(v => interpreter.toHexString(v));
+    let restoreContext = null;
+    const plan = planVerification(scriptHex, {
+      bindingHex: CHECK_PREIMAGE_BINDING_HEX,
+      substitutePreimage: settings.substitutePreimage,
+      enableSignatures: settings.enableSignatures
+    });
 
-    // Step 4: Send to ScriptVM via IPC
+    if (!plan.compare) {
+      logToConsole(`Not compared: ${plan.reason}.`, 'warning');
+      return;
+    }
+
     if (!window.runar || !window.runar.verifyScript) {
       logToConsole('Rúnar ScriptVM not available. Check that runar-testing is linked.', 'error');
       return;
     }
 
+    // Step 2: The ScriptVM runs the binding against a transaction of its own,
+    // so the preimage on the stack has to be that transaction's preimage or
+    // neither engine is checking anything real.
+    const initialStack = getInitialStackValues();
+
+    if (plan.substitutePreimage) {
+      const derived = await window.runar.verifyPreimage(scriptHex);
+      if (!derived.success) {
+        logToConsole(`Could not derive a preimage for this script: ${derived.error}`, 'error');
+        return;
+      }
+
+      if (initialStack.length === 0) {
+        initialStack.push('0x' + derived.preimageHex);
+      } else {
+        initialStack[initialStack.length - 1] = '0x' + derived.preimageHex;
+      }
+
+      // Verify borrows the context; whatever the settings configured goes back
+      restoreContext = { context: interpreter.txContext, mode: interpreter.txContextMode };
+      interpreter.setTransactionContext({ sighash: derived.sighashHex });
+      logToConsole('Substituted a preimage matching the verification transaction, ' +
+        'because the binding rejects any other one in both engines', 'info');
+    }
+
+    // Step 3: Run through our interpreter
+    const localResult = await interpreter.run(script, initialStack);
+    const localStack = [...interpreter.mainStack];
+    const localSuccess = localResult.success;
+
+    // Step 4: Same stack to the ScriptVM, converted the way the interpreter does
+    const initialStackHex = initialStack.map(v => interpreter.toHexString(v));
     const vmResult = await window.runar.verifyScript(scriptHex, initialStackHex);
 
     if (vmResult.error && vmResult.error.includes('not available')) {
@@ -552,6 +588,10 @@ async function verifyScript() {
 
     // Reset interpreter state (verification is non-destructive to UI)
     interpreter.reset();
+    if (restoreContext) {
+      interpreter.txContext = restoreContext.context;
+      interpreter.txContextMode = restoreContext.mode;
+    }
     updateUI();
 
   } catch (error) {
@@ -978,6 +1018,13 @@ function changeNetwork(event) {
   }
 
   logToConsole(`Network changed to: ${settings.network}`, 'info');
+}
+
+function toggleSubstitutePreimage(event) {
+  settings.substitutePreimage = event.target.checked;
+  logToConsole(settings.substitutePreimage
+    ? 'Verify will substitute a preimage that matches the verification transaction'
+    : 'Verify will skip any script that needs a substituted preimage', 'info');
 }
 
 // Transaction version decides the strict rules, so the interpreter needs it

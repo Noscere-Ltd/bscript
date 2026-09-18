@@ -6,12 +6,14 @@
 // globals the scripts after them read at load time.
 const APP_SCRIPTS = [
   '../shared/push-data.js',
+  '../shared/script-walk.js',
   'escape-html.js',
   'interpreter.js',
   'syntax.js',
   'push-tx-binding.js',
   'stack-input.js',
   'compiler.js',
+  'verify-plan.js',
   'chain.js',
   'chain-ui.js',
   'app.js'

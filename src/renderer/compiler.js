@@ -175,6 +175,12 @@ function decodeScriptNumber(bytes) {
 }
 
 function hexToBytes(hex) {
+  // parseInt reads '2g' as 2 and 'zz' as NaN, which the array stores as 0, so
+  // a typo compiled to different bytes and Deploy would broadcast them
+  if (!/^([0-9a-fA-F]{2})*$/.test(hex)) {
+    throw new Error('Not valid hex (digits 0-9 and a-f, in pairs): ' +
+      (hex.length > 40 ? hex.substring(0, 40) + '...' : hex));
+  }
   var bytes = new Uint8Array(hex.length / 2);
   for (var i = 0; i < hex.length; i += 2) {
     bytes[i / 2] = parseInt(hex.substr(i, 2), 16);

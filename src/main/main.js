@@ -5,6 +5,7 @@ const https = require('https');
 const { createMenu } = require('./menu');
 const { toHashBuffer } = require('./hash-input');
 const { resolveProjectFile } = require('./chain-paths');
+const { deployScript, assertNetwork } = require('./deploy');
 
 // Lazy load BSV SDK modules when needed (loaded on first use)
 // This avoids potential conflicts with Electron's module loading
@@ -385,10 +386,11 @@ ipcMain.handle('runar-verify-script', async (event, { scriptHex, initialStackHex
 // Rúnar SDK Deployment
 // ---------------------------------------------------------------------------
 
-ipcMain.handle('runar-get-address', async (event, { wif }) => {
+ipcMain.handle('runar-get-address', async (event, { wif, network }) => {
   try {
+    assertNetwork(network);
     const { LocalSigner } = await getRunarSdk();
-    const signer = new LocalSigner(wif);
+    const signer = new LocalSigner(wif, network);
     const address = await signer.getAddress();
     const pubKey = await signer.getPublicKey();
     return { success: true, address, pubKey };
@@ -399,8 +401,9 @@ ipcMain.handle('runar-get-address', async (event, { wif }) => {
 
 ipcMain.handle('runar-get-balance', async (event, { address, network }) => {
   try {
+    assertNetwork(network);
     const { WhatsOnChainProvider } = await getRunarSdk();
-    const provider = new WhatsOnChainProvider(network || 'mainnet');
+    const provider = new WhatsOnChainProvider(network);
     const utxos = await provider.getUtxos(address);
     const total = utxos.reduce((sum, u) => sum + u.satoshis, 0);
     return { success: true, balance: total, utxoCount: utxos.length };
@@ -409,54 +412,13 @@ ipcMain.handle('runar-get-balance', async (event, { address, network }) => {
   }
 });
 
-ipcMain.handle('runar-deploy-script', async (event, { wif, scriptHex, satoshis, network }) => {
+ipcMain.handle('runar-deploy-script', async (event, params) => {
   try {
-    const { LocalSigner, WhatsOnChainProvider, buildDeployTransaction, selectUtxos, buildP2PKHScript } = await getRunarSdk();
-    const { Transaction, UnlockingScript } = getBsvSdk();
-
-    const signer = new LocalSigner(wif);
-    const address = await signer.getAddress();
-    const provider = new WhatsOnChainProvider(network || 'mainnet');
-
-    // Get UTXOs
-    const allUtxos = await provider.getUtxos(address);
-    if (allUtxos.length === 0) {
-      return { success: false, error: 'No UTXOs available. Fund the address first.' };
-    }
-
-    // Select UTXOs
-    const scriptByteLen = scriptHex.length / 2;
-    const selected = selectUtxos(allUtxos, satoshis, scriptByteLen);
-
-    // Build change script
-    const changeScript = buildP2PKHScript(address);
-
-    // Build unsigned transaction
-    const { tx, inputCount } = buildDeployTransaction(scriptHex, selected, satoshis, address, changeScript);
-
-    // Sign each input
-    const txHex = tx.toHex();
-    for (let i = 0; i < inputCount; i++) {
-      const sigHex = await signer.sign(txHex, i, changeScript, selected[i].satoshis);
-      const pubKeyHex = await signer.getPublicKey();
-
-      // Build P2PKH unlocking script: <sig> <pubkey>
-      const sigBytes = Buffer.from(sigHex, 'hex');
-      const pubBytes = Buffer.from(pubKeyHex, 'hex');
-
-      let unlockHex = '';
-      // Push signature
-      unlockHex += sigBytes.length.toString(16).padStart(2, '0') + sigHex;
-      // Push pubkey
-      unlockHex += pubBytes.length.toString(16).padStart(2, '0') + pubKeyHex;
-
-      tx.inputs[i].unlockingScript = UnlockingScript.fromHex(unlockHex);
-    }
-
-    // Broadcast
-    const txid = await provider.broadcast(tx);
-
-    return { success: true, txid, address };
+    // src/main/deploy.js holds the refusals and the one-at-a-time flag
+    return await deployScript(params || {}, {
+      runar: await getRunarSdk(),
+      UnlockingScript: getBsvSdk().UnlockingScript
+    });
   } catch (error) {
     return { success: false, error: error.message };
   }

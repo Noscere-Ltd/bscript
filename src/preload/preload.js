@@ -62,8 +62,8 @@ contextBridge.exposeInMainWorld('runar', {
     ipcRenderer.invoke('runar-verify-preimage', { scriptHex }),
 
   // Deployment
-  getAddress: (wif) =>
-    ipcRenderer.invoke('runar-get-address', { wif }),
+  getAddress: (wif, network) =>
+    ipcRenderer.invoke('runar-get-address', { wif, network }),
   getBalance: (address, network) =>
     ipcRenderer.invoke('runar-get-balance', { address, network }),
   deployScript: (params) =>

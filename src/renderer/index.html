@@ -157,10 +157,11 @@
           </div>
         </div>
 
-        <div class="settings-section" id="network-settings" style="display: none;">
+        <div class="settings-section" id="network-settings">
           <h3>Bitcoin Network</h3>
           <p class="settings-description">
-            Select the Bitcoin network for signature verification and transaction validation.
+            The network Deploy broadcasts to and reads the balance from. A testnet
+            WIF starts with c. It has no effect on running or verifying a script.
           </p>
           <div class="settings-option">
             <label class="radio-option">
@@ -174,13 +175,6 @@
               <input type="radio" name="network" value="testnet" />
               <span class="radio-label">Testnet</span>
               <span class="radio-description">Testing network</span>
-            </label>
-          </div>
-          <div class="settings-option">
-            <label class="radio-option">
-              <input type="radio" name="network" value="regtest" />
-              <span class="radio-label">Regtest</span>
-              <span class="radio-description">Local regression testing</span>
             </label>
           </div>
         </div>
@@ -336,7 +330,7 @@
           </p>
           <label for="deploy-wif" class="settings-input-label">WIF Private Key</label>
           <input type="password" id="deploy-wif" class="settings-text-input"
-                 placeholder="Enter WIF key (starts with 5, K, or L)" autocomplete="off" />
+                 placeholder="Enter WIF key (K or L on mainnet, c on testnet)" autocomplete="off" />
           <div id="deploy-address" class="deploy-address-display" style="display: none;">
             <span class="state-label">Address:</span>
             <span id="deploy-address-value" class="state-value"></span>

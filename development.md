@@ -126,11 +126,14 @@ Script numbers are `BigInt`, so arithmetic is arbitrary width, not 32-bit.
 `toNumber(value)` returns a `BigInt`; `toIndex(value)` returns an ordinary
 number and is what positions, widths and counts use.
 
-`interpreter.txVersion` selects the rules. Version 1 is strict: minimal pushes,
-minimal number encoding, low-S signatures, NULLDUMMY, push-only unlocking
-scripts and a clean stack. Any version above 1 relaxes all of them, which is
-what `isRelaxed()` tests. `checkFinalStack()` applies the end-of-script verdict
-after the last instruction, on both the Run and the Step path.
+`interpreter.txVersion` selects the rules. Version 1 is strict: minimal number
+encoding, low-S signatures, NULLDUMMY and a clean stack. Any version above 1
+relaxes all of them, which is what `isRelaxed()` tests. The interpreter has no
+check for minimal pushes or for push-only unlocking scripts, and neither rule
+can be broken: `emitPushData` always emits the minimal push, and the only
+unlocking data is the initial stack, which is always pushes.
+`checkFinalStack()` applies the end-of-script verdict after the last
+instruction, on both the Run and the Step path.
 
 ## Adding an opcode
 
@@ -204,11 +207,21 @@ can honestly be compared on:
 
 - A script calling `checkPreimage` needs a preimage that matches the spend the
   ScriptVM builds. `verify-preimage.js` derives one from the VM's own
-  `SYNTHETIC_SPEND_CONTEXT` and Verify substitutes it for the initial stack.
-  The `substitutePreimage` setting turns this off.
+  `SYNTHETIC_SPEND_CONTEXT` and Verify substitutes it for the top item of the
+  initial stack. The `substitutePreimage` setting turns this off.
 - A script checking a signature that the interpreter only simulates cannot be
   compared at all, because the ScriptVM checks it for real. Verify says so
   rather than reporting a mismatch.
+
+`app.js` passes `settings.txVersion` to the `runar-verify-script` handler.
+`src/main/vm-verify.js` runs the ScriptVM with `strictEncoding` on at version 1
+and applies the clean stack rule itself, because the VM never calls
+`Spend.validate()`.
+
+`verifyVerdict()` in `verify-plan.js` compares the success flags and the final
+stacks. It returns `MATCH`, `BOTH_FAILED` with the error from each engine, or
+`MISMATCH`. A script that does not compile is reported before the plan, and
+nothing is compared.
 
 `app.js` saves and restores any configured transaction context around the
 substitution, so verifying does not discard the user's settings.
@@ -223,7 +236,9 @@ directly from the renderer; validate what comes in over IPC; never `eval()` a
 user script, the interpreter executes it.
 
 Deploy signs with a WIF the user pastes in and broadcasts to the selected
-network. It spends real coins. Keep the key in the renderer only as long as the
+network, mainnet or testnet. It spends real coins. `src/main/deploy.js` refuses
+an unknown network, an empty script and a second deployment while one is in
+progress. The renderer asks for confirmation on mainnet. Keep the key in the renderer only as long as the
 operation needs it, and never log it.
 
 ## Debugging

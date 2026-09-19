@@ -65,7 +65,7 @@ verify
 Built-in macros that expand to base opcodes before execution:
 
 ### xSwap_n
-Swap the top stack item with the item n below it (`xSwap_1` is `swap`):
+Swap the top stack item with the item n below it (`xSwap_1` is `swap`, `xSwap_0` does nothing):
 ```javascript
 xSwap_2  // Expands to: 2 roll swap 2 roll 2 roll
          // [1, 2, 3] -> [3, 2, 1]
@@ -78,7 +78,7 @@ xDrop_3  // Expands to: 3 roll drop
 ```
 
 ### xRot_n
-Move the item n below the top to the top (`xRot_1` is `swap`):
+Move the item n below the top to the top (`xRot_1` is `swap`, `xRot_0` does nothing):
 ```javascript
 xRot_4  // Expands to: 4 roll
 ```
@@ -99,7 +99,7 @@ extractVersion        // nVersion, as a number
 extractHashPrevouts   // hashPrevouts, 32 bytes
 extractHashSequence   // hashSequence, 32 bytes
 extractOutpoint       // the outpoint, 36 bytes
-extractInputIndex     // the input index, as a number
+extractInputIndex     // the output index in the outpoint (bytes 100 to 104), as a number
 extractAmount         // the input amount in satoshis, as a number
 extractSequence       // nSequence, as a number
 extractOutputHash     // hashOutputs, 32 bytes
@@ -169,7 +169,7 @@ LOOP[3]{$i}  // Expands to: 0 1 2
 - **checkPreimage** - OP_PUSH_TX: prove the preimage on the stack belongs to this spend
 
 ### Flow Control
-- **if** ... **else** ... **endIf** - Conditional branching
+- **if** ... **else** ... **endIf** - Conditional branching. Each `if` or `notIf` takes one `else`. A second `else` fails, as on BSV nodes since Genesis.
 - **notIf** ... **endIf** - Negated conditional
 - **verify** - Fail if top is false
 - **return** - Exit script immediately
@@ -217,13 +217,16 @@ Settings holds the transaction version the script is judged under, and it
 changes the rules, not just a number.
 
 **Version 1** is strict:
-- pushes must use the smallest encoding available
 - numbers must not carry a byte they do not need
 - signatures must be low-S, and `checkMultiSig` must leave a null dummy
 - exactly one item may remain on the stack at the end (clean stack)
-- a signature may not use the Chronicle sighash type (bit 0x20)
 
 **Version 2 and above** relax all of them.
+
+The compiler always emits the smallest push encoding, so no push can break the
+minimal push rule. The Chronicle sighash type (bit 0x20) does not follow this
+setting. With a transaction context, a signature that uses it fails when the
+pasted transaction has version 1.
 
 Either way the script fails if the stack is empty at the end or the top item is
 false. Teaching scripts that leave several values on the stack need version 2,
@@ -231,37 +234,48 @@ and the shipped examples say so in a comment at the top.
 
 ## Signature Verification
 
-By default `checkSig` and `checkMultiSig` are simulated: they check the shape of
-the signature, not its validity, so script logic can be tested without a
-transaction. Turn on signature verification in Settings and supply a
-transaction context to have them checked for real. The context can be:
+By default `checkSig` and `checkMultiSig` are simulated: any signature that is
+not empty passes, so script logic can be tested without a transaction. Turn on
+signature verification in Settings and supply a transaction context to have
+them checked for real. The context can be:
 
 - a **sighash** you paste in directly
 - a **raw transaction** plus input index, previous locking script and satoshis
-- a **preimage** built from those same fields, which the panel can compute and
-  inject onto the stack
+
+The **preimage** mode is a calculator, not a context. It computes a preimage
+and its signature from those same fields, and **Inject to Stack** puts both on
+the initial stack. Apply Context does nothing in preimage mode.
 
 ## Verify (Cmd/Ctrl + Shift + V)
 
 Runs the same script through Rúnar's `ScriptVM` and compares the result with
-this interpreter. The console reports one of:
+this interpreter. Verify passes the Transaction Version setting to the
+ScriptVM, and at version 1 both engines apply the clean stack rule. The console
+reports one of:
 
-- **MATCH** - both engines agree
-- a **mismatch**, with what each engine returned
+- **MATCH** - both engines succeed with the same final stack
+- **BOTH FAILED** - both engines fail, with the reason from each
+- **MISMATCH** - one engine succeeds and the other fails, or the final stacks
+  differ
+- **The script does not compile, so nothing was compared**, with the error
 - **Not compared**, with the reason. A script that checks a signature this
   interpreter only simulates cannot be compared, because the ScriptVM checks it
   for real.
 
 A script calling `checkPreimage` needs a preimage belonging to the spend the
-ScriptVM builds. Verify derives one and substitutes it for the initial stack.
-The `Substitute a matching preimage` setting turns that off.
+ScriptVM builds. Verify derives one and substitutes it for the top item of the
+initial stack. The `Substitute a matching preimage` setting turns that off.
 
 ## Chain Mode
 
 Load a `.bsm.json` project to step a stateful contract through its methods. The
-contract's state lives after an `OP_RETURN` in the locking script, and each
-method has an unlocking script. The chain panel simulates the transitions
-locally; it does not broadcast anything.
+contract's state lives after an `OP_RETURN` in the locking script. Each method
+runs the contract with the method's parameters and the preimage on the stack.
+The `unlock` file a method names is ignored. The chain panel simulates the
+transitions locally; it does not broadcast anything.
+
+Save writes the contract file. To run an edited contract, save it and open the
+project again. Invalid JSON in the New State box stops the transition.
 
 ## Keyboard Shortcuts
 

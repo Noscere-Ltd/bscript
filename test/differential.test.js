@@ -168,7 +168,8 @@ for (const script of VERSION_SENSITIVE) {
 // Examples using checkSig, checkMultiSig or checkPreimage are left out: the
 // interpreter simulates signature checking and @bsv/sdk does real ECDSA
 // against a transaction, so they cannot agree by construction. Examples using
-// import are left out too, since resolving one needs window.electronAPI.
+// import are left out too: compare() runs a script with no file path, so an
+// import has nothing to resolve against. test/examples.test.js runs them.
 const EXAMPLE_CASES = [
   'alt-stack',
   'arithmetic',

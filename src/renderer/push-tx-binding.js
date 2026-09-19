@@ -2,8 +2,8 @@
 //
 // Vendored from the Runar compiler: packages/runar-compiler, source
 // dist/passes/oppushtx-codegen.js, export CHECK_PREIMAGE_BINDING_HEX.
-// That package is not a dependency of this repo, so the bytes are copied
-// here. test/push-tx.test.js pins them to the export when it resolves.
+// That file is vendored under src/vendor/runar/compiler, and
+// test/push-tx.test.js pins these bytes to its export.
 //
 // The run derives an ECDSA signature in script from hash256(preimage) and
 // checks it against a fixed public key with OP_CHECKSIGVERIFY, so the

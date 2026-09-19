@@ -57,7 +57,7 @@ and applies the harness DoS bounds. Every opcode semantic, and real ECDSA for
 `package.json`.
 
 So Verify still compares two independent engines: the built-in interpreter in
-`src/main`, and `@bsv/sdk`'s `Spend`. This directory is the adapter that lets a
+`src/renderer`, and `@bsv/sdk`'s `Spend`. This directory is the adapter that lets a
 bare script run through the second one.
 
 ## Re-syncing
@@ -68,5 +68,5 @@ cd /tmp/runar && npm install && npm run build
 diff -r /tmp/runar/packages/runar-testing/dist/vm  src/vendor/runar/vm
 ```
 
-Expect the two rewritten imports and the `script-utils.js` subset to differ.
+Expect the four changes listed under "What is here" to differ.
 Anything else is upstream drift worth reading before copying over.

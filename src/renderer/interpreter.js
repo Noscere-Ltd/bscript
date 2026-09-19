@@ -1510,11 +1510,17 @@ class ScriptInterpreter {
 
   async op_checkmultisig() {
     const numPubKeys = this.toIndex(this.popStack());
+    if (numPubKeys < 0 || numPubKeys > 2147483647) {
+      throw new Error('checkMultiSig requires a key count between 0 and 2147483647.');
+    }
     const pubKeys = [];
     for (let i = 0; i < numPubKeys; i++) {
       pubKeys.push(this.popStack());
     }
     const numSigs = this.toIndex(this.popStack());
+    if (numSigs < 0 || numSigs > numPubKeys) {
+      throw new Error('checkMultiSig requires the number of signatures to be no greater than the number of keys.');
+    }
     const sigs = [];
     for (let i = 0; i < numSigs; i++) {
       sigs.push(this.popStack());

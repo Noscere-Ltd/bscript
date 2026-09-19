@@ -88,6 +88,24 @@ Duplicate, hash, and concatenate:
 hashCat  // Expands to: dup sha256 swap cat
 ```
 
+### Preimage field extractors
+Each consumes a preimage from the stack and leaves one field. `checkPreimage`
+leaves the preimage where it found it, so `dup` before every extractor but the
+last:
+
+```javascript
+extractVersion        // nVersion, as a number
+extractHashPrevouts   // hashPrevouts, 32 bytes
+extractHashSequence   // hashSequence, 32 bytes
+extractOutpoint       // the outpoint, 36 bytes
+extractInputIndex     // the input index, as a number
+extractAmount         // the input amount in satoshis, as a number
+extractSequence       // nSequence, as a number
+extractOutputHash     // hashOutputs, 32 bytes
+extractLocktime       // nLocktime, as a number
+extractSigHashType    // the sighash type, as a number
+```
+
 ### LOOP[n]{body}
 Compile-time loop unrolling:
 ```javascript
@@ -136,6 +154,8 @@ LOOP[3]{$i}  // Expands to: 0 1 2
 - **lessThan**, **greaterThan** - Numeric comparison
 - **lessThanOrEqual**, **greaterThanOrEqual**
 - **0notEqual** - Check if non-zero
+- **numEqual**, **numEqualVerify**, **numNotEqual** - Numeric equality
+- **booland**, **boolor** - Both non-zero / either non-zero
 
 ### Cryptographic
 - **sha256** - SHA-256 hash
@@ -143,12 +163,16 @@ LOOP[3]{$i}  // Expands to: 0 1 2
 - **ripemd160** - RIPEMD-160 hash
 - **hash256** - Double SHA-256 (Bitcoin hash)
 - **hash160** - SHA-256 then RIPEMD-160 (Bitcoin address hash)
+- **checkSig**, **checkSigVerify** - Check a signature
+- **checkMultiSig**, **checkMultiSigVerify** - Check m-of-n signatures
+- **checkPreimage** - OP_PUSH_TX: prove the preimage on the stack belongs to this spend
 
 ### Flow Control
 - **if** ... **else** ... **endIf** - Conditional branching
 - **notIf** ... **endIf** - Negated conditional
 - **verify** - Fail if top is false
 - **return** - Exit script immediately
+- **codeSeparator** - Start the subscript a later signature check covers
 - **ver** - Push the transaction version as four little-endian bytes
 - **verIf** ... **endIf** - Branch when the top item is that version
 - **verNotIf** ... **endIf** - Negated version branch
@@ -164,8 +188,8 @@ LOOP[3]{$i}  // Expands to: 0 1 2
 
 ### Constants
 - **true**, **false** - Boolean values
-- **0** through **16** - Number literals
-- **1negate** - Push -1
+- **0** through **16** and **-1** - Single-byte number literals
+- Any other integer becomes a minimally encoded push
 
 ## Debugging
 
@@ -175,13 +199,67 @@ LOOP[3]{$i}  // Expands to: 0 1 2
 - **Reset (Cmd/Ctrl + R)** - Clear execution state
 
 ### Initial Stack
-Use the left panel to define values pushed onto the stack before execution. Enter one value per line (bottom to top).
+Use the left panel to define values pushed onto the stack before execution.
+Values are space separated, bottom to top. Each one is either a decimal number
+(`42`, `-7`) or a `0x` hex literal (`0xdeadbeef`). Anything else is dropped,
+with a message saying why.
 
 ### Execution History
 View all executed opcodes with descriptions in the debugger panel.
 
 ### Stack Visualization
 Monitor main and alternate stacks in real-time during execution.
+
+## Transaction Version
+
+Settings holds the transaction version the script is judged under, and it
+changes the rules, not just a number.
+
+**Version 1** is strict:
+- pushes must use the smallest encoding available
+- numbers must not carry a byte they do not need
+- signatures must be low-S, and `checkMultiSig` must leave a null dummy
+- exactly one item may remain on the stack at the end (clean stack)
+
+**Version 2 and above** relax all of them.
+
+Either way the script fails if the stack is empty at the end or the top item is
+false. Teaching scripts that leave several values on the stack need version 2,
+and the shipped examples say so in a comment at the top.
+
+## Signature Verification
+
+By default `checkSig` and `checkMultiSig` are simulated: they check the shape of
+the signature, not its validity, so script logic can be tested without a
+transaction. Turn on signature verification in Settings and supply a
+transaction context to have them checked for real. The context can be:
+
+- a **sighash** you paste in directly
+- a **raw transaction** plus input index, previous locking script and satoshis
+- a **preimage** built from those same fields, which the panel can compute and
+  inject onto the stack
+
+## Verify (Cmd/Ctrl + Shift + V)
+
+Runs the same script through Rúnar's `ScriptVM` and compares the result with
+this interpreter. The console reports one of:
+
+- **MATCH** - both engines agree
+- a **mismatch**, with what each engine returned
+- **Not compared**, with the reason. A script that checks a signature this
+  interpreter only simulates cannot be compared, because the ScriptVM checks it
+  for real.
+
+A script calling `checkPreimage` needs a preimage belonging to the spend the
+ScriptVM builds. Verify derives one and substitutes it for the initial stack.
+The `Substitute a matching preimage` setting turns that off.
+
+## Chain Mode
+
+Load a `.bsm.json` project to step a stateful contract through its methods. The
+contract's state lives after an `OP_RETURN` in the locking script, and each
+method has an unlocking script. The chain panel simulates the transitions
+locally; it does not broadcast anything.
 
 ## Keyboard Shortcuts
 
@@ -192,6 +270,7 @@ Monitor main and alternate stacks in real-time during execution.
 - **Cmd/Ctrl + Enter** - Execute Script
 - **F10** - Step Through
 - **Cmd/Ctrl + R** - Reset Execution
+- **Cmd/Ctrl + Shift + V** - Verify with ScriptVM
 - **Cmd/Ctrl + /** - Show Shortcuts
 
 ## Examples
@@ -200,14 +279,24 @@ Example scripts are available in the `examples/` directory:
 - `arithmetic.bscript` - Math operations
 - `stack-operations.bscript` - Stack manipulation
 - `conditionals.bscript` - IF/ELSE branching
+- `alt-stack.bscript` - Alternate stack
 - `bitwise.bscript` - Bitwise operations
+- `hash-puzzle.bscript` - Proof of knowledge of a preimage
+- `p2pkh-checksig.bscript` - Pay to public key hash
+- `multisig-2of3.bscript` - 2-of-3 multisig
 - `import-example.bscript` - Wildcard imports
 - `named-import-example.bscript` - Named imports
 - `macros.bscript` - Built-in macro usage
+- `op-push-tx.bscript` - `checkPreimage` and the preimage fields
+- `covenant-locktime.bscript` - A covenant on nLocktime
+- `covenant-output-hash.bscript` - A covenant on the outputs
+- `covenant-rate-limit.bscript` - An owner signature plus a covenant
+- `counter-chain/` - A stateful contract for chain mode
 
 ## Notes
 
-- All arithmetic operates on **32-bit signed integers**
+- Script numbers are **arbitrary width**, held as BigInt. Arithmetic is not
+  capped at 32 bits, and a number is encoded in the fewest bytes that hold it.
 - Scripts execute **sequentially** with static branching only
 - No dynamic looping - use compile-time `LOOP` macro
 - Import paths are relative to current file

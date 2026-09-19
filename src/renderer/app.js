@@ -937,6 +937,7 @@ function showKeyboardShortcuts() {
     'Cmd/Ctrl+Enter - Execute Script',
     'F10 - Step Through',
     'Cmd/Ctrl+R - Reset Execution',
+    'Cmd/Ctrl+Shift+V - Verify with ScriptVM',
     'Cmd/Ctrl+/ - Show Shortcuts'
   ];
   logToConsole('=== Keyboard Shortcuts ===', 'info');

@@ -23,6 +23,19 @@ function isChronicleBeforeActivation(scope, txContext) {
   return Transaction.fromHex(txContext.txHex).version <= 1;
 }
 
+// Why Spend would refuse this scope before looking at the signature, or null.
+// The base type has to be ALL, NONE or SINGLE, whatever the transaction is.
+function scopeError(scope, sighashHex, txContext) {
+  const baseType = scope & 0x1f;
+  if (baseType < TransactionSignature.SIGHASH_ALL || baseType > TransactionSignature.SIGHASH_SINGLE) {
+    return 'The signature hash type is invalid.';
+  }
+  if (!sighashHex && isChronicleBeforeActivation(scope, txContext)) {
+    return 'The signature hash type is invalid before Chronicle.';
+  }
+  return null;
+}
+
 // The sighash is already the message hash, so it is verified as it stands.
 // Signature.verify would sha256 it again and check the wrong message.
 function verifyAgainstSighash(signature, sighashHex, pubKey) {
@@ -34,7 +47,7 @@ function sighashFor({ txHex, inputIndex, prevScriptHex, satoshis, subscriptHex }
   const tx = Transaction.fromHex(txHex);
   const input = tx.inputs[inputIndex];
 
-  const preimage = TransactionSignature.format({
+  const params = {
     sourceTXID: input.sourceTXID,
     sourceOutputIndex: input.sourceOutputIndex,
     sourceSatoshis: satoshis,
@@ -46,8 +59,15 @@ function sighashFor({ txHex, inputIndex, prevScriptHex, satoshis, subscriptHex }
     inputSequence: input.sequence,
     lockTime: tx.lockTime,
     scope
-  });
+  };
 
+  // The original algorithm signs the number one when SIGHASH_SINGLE names an
+  // input with no matching output. Nodes kept that bug, and so does Spend.
+  if (TransactionSignature.usesOtdaSingleBug(params)) {
+    return '01' + '00'.repeat(31);
+  }
+
+  const preimage = TransactionSignature.format(params);
   return Buffer.from(Hash.hash256(Buffer.from(preimage))).toString('hex');
 }
 
@@ -65,8 +85,9 @@ function verifySig({ signatureHex, pubKeyHex, sighashHex, txContext, requireLowS
       return { success: false, error: 'The signature must have a low S value.' };
     }
 
-    if (!sighashHex && isChronicleBeforeActivation(signature.scope, txContext)) {
-      return { success: false, error: 'The signature hash type is invalid before Chronicle.' };
+    const refused = scopeError(signature.scope, sighashHex, txContext);
+    if (refused) {
+      return { success: false, error: refused };
     }
 
     const sighash = sighashHex || sighashFor(txContext, signature.scope);
@@ -84,15 +105,16 @@ function verifySig({ signatureHex, pubKeyHex, sighashHex, txContext, requireLowS
 
 // Each signature carries its own scope, so each is checked against the
 // sighash that scope selects. Signatures must match the keys in order, and
-// each one consumes the next matching key.
+// each one consumes the next matching key. An empty signature keeps its
+// place and matches no key, so the check fails, the way it does in Spend.
 function verifyMultiSig({ signaturesHex, pubKeysHex, sighashHex, txContext, requireLowS }) {
   try {
     const pubKeys = pubKeysHex.map(hex => PublicKey.fromString(hex));
-    const signatures = signaturesHex
-      .filter(sig => sig && sig.length > 0)
-      .map(hex => TransactionSignature.fromChecksigFormat(Array.from(Buffer.from(hex, 'hex'))));
+    const signatures = signaturesHex.map(hex => (hex && hex.length > 0
+      ? TransactionSignature.fromChecksigFormat(Array.from(Buffer.from(hex, 'hex')))
+      : null));
 
-    if (requireLowS && signatures.some(sig => !sig.hasLowS())) {
+    if (requireLowS && signatures.some(sig => sig && !sig.hasLowS())) {
       return { success: false, error: 'The signature must have a low S value.' };
     }
 
@@ -100,8 +122,12 @@ function verifyMultiSig({ signaturesHex, pubKeysHex, sighashHex, txContext, requ
     let validCount = 0;
 
     for (const sig of signatures) {
-      if (!sighashHex && isChronicleBeforeActivation(sig.scope, txContext)) {
-        return { success: false, error: 'The signature hash type is invalid before Chronicle.' };
+      // No key can match an empty signature, so the rest cannot either
+      if (!sig) break;
+
+      const refused = scopeError(sig.scope, sighashHex, txContext);
+      if (refused) {
+        return { success: false, error: refused };
       }
 
       const sighash = sighashHex || sighashFor(txContext, sig.scope);

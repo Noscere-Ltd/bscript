@@ -3,37 +3,38 @@
 
 // Example 1: hashCat - duplicates, hashes, and concatenates
 // Expands to: dup sha256 swap cat
-// Result: [x || SHA256(x)]
-"hello" hashCat
+// Result: [SHA256(x) || x]
+// 0x68656c6c6f is the text "hello"
+0x68656c6c6f hashCat
 
-// Stack now contains: ["hello", "<hash of hello>hello"]
+// Stack now contains one item: <hash of hello> followed by hello
 
-// Example 2: xSwap_n - swap top with nth item
+// Example 2: xSwap_n - swap the top with the item n below it
 // Set up a stack with multiple values
-drop drop  // Clear previous
+drop  // Clear previous
 1 2 3 4 5
 
-// xSwap_2 swaps top (5) with 2nd from top (3)
+// xSwap_2 swaps the top (5) with the item 2 below it (3)
 // Stack: [1, 2, 3, 4, 5] -> [1, 2, 5, 4, 3]
 xSwap_2
 
-// Example 3: xDrop_n - drop nth item from stack
+// Example 3: xDrop_n - drop the item n below the top
 // Stack: [1, 2, 5, 4, 3]
-// xDrop_2 drops 2nd from top (4)
-// Stack: [1, 2, 5, 3]
+// xDrop_2 drops the item 2 below the top (5)
+// Stack: [1, 2, 4, 3]
 xDrop_2
 
-// Example 4: xRot_n - rotate nth item to top
-// Stack: [1, 2, 5, 3]
-// xRot_3 brings 3rd from top (2) to the top
-// Stack: [1, 5, 3, 2]
+// Example 4: xRot_n - move the item n below the top to the top
+// Stack: [1, 2, 4, 3]
+// xRot_3 brings the item 3 below the top (1) to the top
+// Stack: [2, 4, 3, 1]
 xRot_3
 
 // Example 5: LOOP[n]{body} - unroll a loop n times
 // This pushes 0, 1, 2 onto the stack
 LOOP[3]{$i}
 
-// Stack now has: [1, 5, 3, 2, 0, 1, 2]
+// Stack now has: [2, 4, 3, 1, 0, 1, 2]
 
 // LOOP with operations
 drop drop drop drop drop drop drop  // Clear stack

@@ -15,9 +15,14 @@ const preimageFrom = (name) => read(name).match(/0x02000000[0-9a-f]+/)[0];
 const parse = (text) => splitStackInput(text).map(parseStackItem);
 const values = (text) => parse(text).map((r) => r.value);
 
-test('decimal integers become numbers', () => {
-  assert.deepStrictEqual(values('0 42 -7'), [0, 42, -7]);
+test('decimal integers become script numbers', () => {
+  assert.deepStrictEqual(values('0 42 -7'), [0n, 42n, -7n]);
   assert.deepStrictEqual(parse('42')[0].type, 'number');
+});
+
+test('an integer above 2^53 keeps every digit', () => {
+  assert.deepStrictEqual(values('9007199254740993 -9007199254740993'),
+    [9007199254740993n, -9007199254740993n]);
 });
 
 test('0x-prefixed hex is kept as the string it was typed as', () => {
@@ -66,8 +71,8 @@ const documentedStacks = (name) => {
 };
 
 const DOCUMENTED = {
-  'multisig-2of3': [0, '0xaa', '0xbb'],
-  'hash-puzzle': [42],
+  'multisig-2of3': [0n, '0xaa', '0xbb'],
+  'hash-puzzle': [42n],
   'p2pkh-checksig': ['0xdeadbeef', '0xcafebabe'],
   'covenant-locktime': [preimageFrom('covenant-locktime')],
   'covenant-output-hash': [preimageFrom('covenant-output-hash')],

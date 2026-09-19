@@ -9,7 +9,7 @@ const {
   PrivateKey, Transaction, TransactionSignature, Script, BigNumber, ECDSA,
   UnlockingScript, LockingScript, Spend
 } = require('@bsv/sdk');
-const { sighashFor, verifySig } = require('../src/main/signature');
+const { sighashFor, verifySig, verifyMultiSig } = require('../src/main/signature');
 const { ScriptInterpreter, narrowAll } = require('./helpers');
 
 const BIP143 = 0x41; // SIGHASH_ALL | FORKID
@@ -55,17 +55,18 @@ function signUnder(scope, ctx = context(), { highS = false } = {}) {
 }
 
 // The oracle: the same locking script and signature through Spend.
-function throughSpend(signatureHex, version = 1) {
+function throughSpend(unlockingASM, version = 1,
+  { locking = lockingHex, tx = spendingTx(version), inputIndex = 0 } = {}) {
   const spend = new Spend({
     sourceTXID: 'ab'.repeat(32),
     sourceOutputIndex: 0,
     sourceSatoshis: 1000,
-    lockingScript: LockingScript.fromHex(lockingHex),
+    lockingScript: LockingScript.fromHex(locking),
     transactionVersion: version,
-    otherInputs: [],
-    outputs: spendingTx(version).outputs,
-    inputIndex: 0,
-    unlockingScript: UnlockingScript.fromASM(signatureHex),
+    otherInputs: tx.inputs.filter((_, i) => i !== inputIndex),
+    outputs: tx.outputs,
+    inputIndex,
+    unlockingScript: UnlockingScript.fromASM(unlockingASM),
     inputSequence: 0xffffffff,
     lockTime: 0
   });
@@ -219,4 +220,119 @@ test('version 1 rejects a high-S signature, version 2 takes it', () => {
   const relaxed = verifySig({ signatureHex, pubKeyHex, txContext: context(), requireLowS: false });
   assert.ok(relaxed.success, relaxed.error);
   assert.strictEqual(relaxed.valid, true);
+});
+
+// 2-of-2 multisig. checkMultiSig pops keys and signatures top first, so the
+// arrays handed to verifyMultiSig run in the reverse of script order.
+const key2 = PrivateKey.fromHex('02'.repeat(32));
+const pubKey2Hex = key2.toPublicKey().toString();
+const multisigHex = Script.fromASM(`OP_2 ${pubKeyHex} ${pubKey2Hex} OP_2 OP_CHECKMULTISIG`).toHex();
+
+function multisigVerdicts(sigsInScriptOrder, version) {
+  const ctx = { ...context(version), prevScriptHex: multisigHex };
+  const ours = verifyMultiSig({
+    signaturesHex: [...sigsInScriptOrder].reverse(),
+    pubKeysHex: [pubKey2Hex, pubKeyHex],
+    txContext: ctx,
+    requireLowS: version === 1
+  });
+  const asm = ['OP_0', ...sigsInScriptOrder.map((sig) => sig || 'OP_0')].join(' ');
+  return { ours, spend: throughSpend(asm, version, { locking: multisigHex }) };
+}
+
+function multisigSignature(signer, version) {
+  const ctx = { ...context(version), prevScriptHex: multisigHex };
+  const sig = ECDSA.sign(new BigNumber(sighashFor(ctx, BIP143), 16), signer, true);
+  return Buffer.from(
+    new TransactionSignature(sig.r, sig.s, BIP143).toChecksigFormat()).toString('hex');
+}
+
+test('2-of-2 multisig with both signatures is valid, as it is in @bsv/sdk', () => {
+  for (const version of [1, 2]) {
+    const { ours, spend } = multisigVerdicts(
+      [multisigSignature(key, version), multisigSignature(key2, version)], version);
+    assert.ok(ours.success, ours.error);
+    assert.strictEqual(ours.valid, true);
+    assert.strictEqual(spend.ok, true, spend.error);
+  }
+});
+
+test('2-of-2 multisig with one valid and one empty signature is not valid', () => {
+  for (const version of [1, 2]) {
+    for (const sigs of [
+      [multisigSignature(key, version), ''],
+      ['', multisigSignature(key2, version)]
+    ]) {
+      const { ours, spend } = multisigVerdicts(sigs, version);
+      assert.ok(ours.success, ours.error);
+      assert.strictEqual(ours.valid, false);
+      assert.strictEqual(spend.ok, false);
+    }
+  }
+});
+
+test('2-of-2 multisig with two empty signatures is not valid', () => {
+  for (const version of [1, 2]) {
+    const { ours, spend } = multisigVerdicts(['', ''], version);
+    assert.ok(ours.success, ours.error);
+    assert.strictEqual(ours.valid, false);
+    assert.strictEqual(spend.ok, false);
+  }
+});
+
+test('a sighash base type that is not ALL, NONE or SINGLE is refused', () => {
+  for (const version of [1, 2]) {
+    for (const scope of [0x40, 0x44]) {
+      const signatureHex = signUnder(scope, context(version));
+      const result = verifySig({
+        signatureHex, pubKeyHex, txContext: context(version), requireLowS: version === 1 });
+
+      assert.strictEqual(result.success, false, `scope 0x${scope.toString(16)}`);
+      assert.match(result.error, /signature hash type is invalid/);
+      assert.strictEqual(throughSpend(signatureHex, version).ok, false);
+    }
+  }
+});
+
+test('multisig refuses an undefined sighash base type too', () => {
+  const ctx = { ...context(2), prevScriptHex: multisigHex };
+  const sign = (signer) => {
+    const sig = ECDSA.sign(new BigNumber(sighashFor(ctx, 0x40), 16), signer, true);
+    return Buffer.from(new TransactionSignature(sig.r, sig.s, 0x40).toChecksigFormat()).toString('hex');
+  };
+  const { ours, spend } = multisigVerdicts([sign(key), sign(key2)], 2);
+
+  assert.strictEqual(ours.success, false);
+  assert.match(ours.error, /signature hash type is invalid/);
+  assert.strictEqual(spend.ok, false);
+});
+
+test('original-algorithm SIGHASH_SINGLE with no matching output signs the number one', () => {
+  // Two inputs, one output, signing input 1. Both the legacy scope 0x03 and
+  // the Chronicle scope 0x63 use the original algorithm.
+  const tx = spendingTx(2);
+  tx.addInput({
+    sourceTXID: 'ab'.repeat(32),
+    sourceOutputIndex: 1,
+    unlockingScript: new UnlockingScript(),
+    sequence: 0xffffffff
+  });
+  const ctx = { ...context(2), txHex: tx.toHex(), inputIndex: 1 };
+
+  for (const scope of [0x03, 0x63]) {
+    assert.strictEqual(sighashFor(ctx, scope), '01' + '00'.repeat(31));
+
+    const one = new BigNumber([1, ...new Array(31).fill(0)]);
+    const sig = ECDSA.sign(one, key, true);
+    const signatureHex = Buffer.from(
+      new TransactionSignature(sig.r, sig.s, scope).toChecksigFormat()).toString('hex');
+
+    const result = verifySig({ signatureHex, pubKeyHex, txContext: ctx, requireLowS: false });
+    assert.ok(result.success, result.error);
+    assert.strictEqual(result.valid, true, `scope 0x${scope.toString(16)}`);
+    assert.strictEqual(throughSpend(signatureHex, 2, { tx, inputIndex: 1 }).ok, true);
+  }
+
+  // BIP-143 SIGHASH_SINGLE has no such bug: the same signature is not valid
+  assert.notStrictEqual(sighashFor(ctx, 0x43), '01' + '00'.repeat(31));
 });

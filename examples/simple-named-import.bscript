@@ -7,19 +7,21 @@ import bitwise from './libs/simple-bitwise.bscript'
 // Each occurrence inlines "12 10 and"
 
 bitwise
-// Stack: [8]
+// Stack: [0x08]
+
+verify
+// Stack: []
+
+bitwise
+// Stack: [0x08]
 
 verify
 
 bitwise
-// Stack: [8, 8]
+// Stack: [0x08]
 
-verify
-
-bitwise
-// Stack: [8, 8, 8]
-
-verify
+// No verify here: it would empty the stack, and a script must end with a
+// true value on it
 
 // This demonstrates that the imported code executes inline
 // each time the name is referenced

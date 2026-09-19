@@ -37,8 +37,9 @@ async function simulate(script, initialStack, txVersion = 1) {
 
 // Run the compiled script under @bsv/sdk's Spend. The initial stack goes in
 // the unlocking script, which is where a spend actually supplies it.
-function makeSpend(lockingHex, unlockingHex, txVersion) {
+function makeSpend(lockingHex, unlockingHex, txVersion, verifyFlags) {
   return new Spend({
+    verifyFlags,
     sourceTXID: '00'.repeat(32),
     sourceOutputIndex: 0,
     sourceSatoshis: 1,
@@ -53,8 +54,8 @@ function makeSpend(lockingHex, unlockingHex, txVersion) {
   });
 }
 
-function reference(lockingHex, unlockingHex, txVersion = 1) {
-  const spend = makeSpend(lockingHex, unlockingHex, txVersion);
+function reference(lockingHex, unlockingHex, txVersion = 1, verifyFlags) {
+  const spend = makeSpend(lockingHex, unlockingHex, txVersion, verifyFlags);
 
   try {
     while (spend.step()) {
@@ -105,7 +106,10 @@ async function compareVerdict(script, initialStack = [], txVersion = 1) {
 // The engines' error messages are their own wording, so a script both engines
 // reject counts as agreement. What matters is that neither accepts a script
 // the other rejects, and that accepted scripts leave the same stack.
-async function compare(script, initialStack = [], txVersion = 1) {
+//
+// verifyFlags goes to Spend as it stands. Without it Spend derives its rules
+// from the transaction version, which is what every case but one wants.
+async function compare(script, initialStack = [], txVersion = 1, verifyFlags) {
   const sim = await simulate(script, initialStack, txVersion);
 
   let ref;
@@ -113,7 +117,8 @@ async function compare(script, initialStack = [], txVersion = 1) {
     ref = reference(
       compileInstructionsToHex(sim.tokens),
       compileInstructionsToHex(initialStack.map(String)),
-      txVersion
+      txVersion,
+      verifyFlags
     );
   } catch (err) {
     ref = { ok: false, error: `compile failed: ${err.message}` };

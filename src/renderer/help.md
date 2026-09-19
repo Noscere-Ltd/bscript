@@ -65,19 +65,20 @@ verify
 Built-in macros that expand to base opcodes before execution:
 
 ### xSwap_n
-Swap top stack item with nth-from-top:
+Swap the top stack item with the item n below it (`xSwap_1` is `swap`):
 ```javascript
-xSwap_2  // Expands to: 2 roll swap 1 roll
+xSwap_2  // Expands to: 2 roll swap 2 roll 2 roll
+         // [1, 2, 3] -> [3, 2, 1]
 ```
 
 ### xDrop_n
-Drop nth-from-top stack item:
+Drop the item n below the top (`xDrop_0` is `drop`):
 ```javascript
 xDrop_3  // Expands to: 3 roll drop
 ```
 
 ### xRot_n
-Rotate nth-from-top item to the top:
+Move the item n below the top to the top (`xRot_1` is `swap`):
 ```javascript
 xRot_4  // Expands to: 4 roll
 ```

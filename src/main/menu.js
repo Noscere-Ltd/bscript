@@ -3,9 +3,16 @@
  * Provides platform-appropriate menus for macOS, Windows, and Linux
  */
 
-const { Menu } = require('electron');
+const { Menu, BrowserWindow } = require('electron');
 
-function createMenu(mainWindow) {
+// Resolve the window when the item is clicked. On macOS the menu outlives the
+// window, so a window captured at build time may already be destroyed.
+function send(channel) {
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  if (win) win.webContents.send(channel);
+}
+
+function createMenu() {
   const isMac = process.platform === 'darwin';
 
   const template = [
@@ -30,37 +37,27 @@ function createMenu(mainWindow) {
         {
           label: 'New Script',
           accelerator: 'CommandOrControl+N',
-          click: () => mainWindow.webContents.send('menu-new-file')
+          click: () => send('menu-new-file')
         },
         {
           label: 'Open Script...',
           accelerator: 'CommandOrControl+O',
-          click: () => mainWindow.webContents.send('menu-open-file')
+          click: () => send('menu-open-file')
         },
         {
           label: 'Open Chain Project...',
-          click: () => mainWindow.webContents.send('menu-open-chain')
-        },
-        {
-          label: 'Open Recent',
-          role: 'recentdocuments',
-          submenu: [
-            {
-              label: 'Clear Recent',
-              role: 'clearrecentdocuments'
-            }
-          ]
+          click: () => send('menu-open-chain')
         },
         { type: 'separator' },
         {
           label: 'Save',
           accelerator: 'CommandOrControl+S',
-          click: () => mainWindow.webContents.send('menu-save-file')
+          click: () => send('menu-save-file')
         },
         {
           label: 'Save As...',
           accelerator: 'CommandOrControl+Shift+S',
-          click: () => mainWindow.webContents.send('menu-save-file-as')
+          click: () => send('menu-save-file-as')
         },
         { type: 'separator' },
         ...(isMac ? [] : [
@@ -103,26 +100,26 @@ function createMenu(mainWindow) {
         {
           label: 'Execute Script',
           accelerator: 'CommandOrControl+Enter',
-          click: () => mainWindow.webContents.send('menu-run-script')
+          click: () => send('menu-run-script')
         },
         {
           label: 'Step Through',
           accelerator: 'F10',
-          click: () => mainWindow.webContents.send('menu-step-script')
+          click: () => send('menu-step-script')
         },
         {
           label: 'Reset Execution',
           accelerator: 'CommandOrControl+R',
-          click: () => mainWindow.webContents.send('menu-reset-script')
+          click: () => send('menu-reset-script')
         },
         { type: 'separator' },
         {
           label: 'Clear Initial Stack',
-          click: () => mainWindow.webContents.send('menu-clear-stack')
+          click: () => send('menu-clear-stack')
         },
         {
           label: 'Clear Console',
-          click: () => mainWindow.webContents.send('menu-clear-console')
+          click: () => send('menu-clear-console')
         }
       ]
     },
@@ -134,12 +131,12 @@ function createMenu(mainWindow) {
         {
           label: 'Verify with ScriptVM',
           accelerator: 'CommandOrControl+Shift+V',
-          click: () => mainWindow.webContents.send('menu-verify-script')
+          click: () => send('menu-verify-script')
         },
         { type: 'separator' },
         {
           label: 'Deploy Script...',
-          click: () => mainWindow.webContents.send('menu-deploy-script')
+          click: () => send('menu-deploy-script')
         }
       ]
     },
@@ -150,12 +147,12 @@ function createMenu(mainWindow) {
       submenu: [
         {
           label: 'About SVSCRIPT',
-          click: () => mainWindow.webContents.send('menu-about')
+          click: () => send('menu-about')
         },
         {
           label: 'Keyboard Shortcuts',
           accelerator: 'CommandOrControl+/',
-          click: () => mainWindow.webContents.send('menu-shortcuts')
+          click: () => send('menu-shortcuts')
         }
       ]
     }

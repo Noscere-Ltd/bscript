@@ -1,9 +1,10 @@
-const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const fs = require('fs').promises;
-const https = require('https');
 const { createMenu } = require('./menu');
 const { toHashBuffer } = require('./hash-input');
+const { makeApiRequest } = require('./api-request');
 
 // Lazy load BSV SDK modules when needed (loaded on first use)
 // This avoids potential conflicts with Electron's module loading
@@ -57,11 +58,25 @@ function createWindow() {
     show: false
   });
 
+  // The preload bridge attaches to whatever page this window loads, so the
+  // window never leaves the app's own page.
+  const indexPath = path.join(__dirname, '../renderer/index.html');
+  const indexUrl = pathToFileURL(indexPath).href;
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url.split('#')[0] !== indexUrl) event.preventDefault();
+  });
+  // A child window would inherit the preload. The one target=_blank link (the
+  // deploy explorer link) opens in the system browser instead.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://')) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
   // Load the index.html
-  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  mainWindow.loadFile(indexPath);
 
   // Set up native menu
-  const menu = createMenu(mainWindow);
+  const menu = createMenu();
   Menu.setApplicationMenu(menu);
 
   // Show window when ready to avoid visual flash
@@ -137,9 +152,6 @@ ipcMain.handle('load-file', async (event) => {
     lastUsedDirectory = path.dirname(filePath);
     grantPath(filePath);
 
-    // Add to recent documents
-    app.addRecentDocument(filePath);
-
     return {
       success: true,
       content: content,
@@ -187,9 +199,6 @@ ipcMain.handle('save-file', async (event, { content, filePath }) => {
 
     // Remember this directory for next time
     lastUsedDirectory = path.dirname(savePath);
-
-    // Add to recent documents
-    app.addRecentDocument(savePath);
 
     return {
       success: true,
@@ -513,32 +522,6 @@ When explaining scripts:
 When fixing errors:
 - Identify the root cause
 - Provide the corrected script`;
-
-function makeApiRequest(url, options, body) {
-  return new Promise((resolve, reject) => {
-    const req = https.request(url, options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(JSON.parse(data));
-        } else {
-          let errMsg;
-          try {
-            const parsed = JSON.parse(data);
-            errMsg = parsed.error?.message || JSON.stringify(parsed);
-          } catch {
-            errMsg = data;
-          }
-          reject(new Error(`API error (${res.statusCode}): ${errMsg}`));
-        }
-      });
-    });
-    req.on('error', reject);
-    req.write(JSON.stringify(body));
-    req.end();
-  });
-}
 
 ipcMain.handle('ai-chat', async (event, { provider, apiKey, model, messages, editorContent }) => {
   try {

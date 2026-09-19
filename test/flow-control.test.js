@@ -65,3 +65,13 @@ test('codeSeparator is a no-op for the stack', async () => {
   // It only matters for the BIP-143 scriptCode, which the SDK computes.
   assert.deepStrictEqual(await stack('1 2 codeSeparator add'), [3]);
 });
+
+test('an if takes one else, and a second one fails', async () => {
+  assert.match(await failure('1 if 10 else 20 else 30 endIf'), /OP_ELSE may only be used once/);
+  assert.match(await failure('0 if 10 else 20 else 30 endIf'), /OP_ELSE may only be used once/);
+  // Counted even inside a branch that is not running
+  assert.match(await failure('0 if 1 if 2 else 3 else 4 endIf endIf'), /OP_ELSE may only be used once/);
+  // Each if has its own else, nested or one after the other
+  assert.deepStrictEqual(await stack('1 if 0 if 10 else 20 endIf else 30 endIf'), [20]);
+  assert.deepStrictEqual(await stack('1 if 10 else 20 endIf 0 if 30 else 40 endIf'), [10, 40]);
+});

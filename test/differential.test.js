@@ -186,6 +186,20 @@ for (const name of EXAMPLE_CASES) {
   });
 }
 
+// One else per if (D12). Spend only applies the rule when it is told Genesis
+// has activated, so this case alone passes the flags. Without them Spend
+// accepts the script, which is not what a node does.
+for (const script of ['1 if 10 else 20 else 30 endIf', '0 if 10 else 20 else 30 endIf',
+  '0 if 1 if 2 else 3 else 4 endIf endIf']) {
+  test(`a second else is rejected, as @bsv/sdk does with the Genesis flags: ${script}`, async () => {
+    const result = await compare(script, [], 1, ['GENESIS', 'UTXO_AFTER_GENESIS']);
+    assert.ok(result.agree, explain(script, result));
+    assert.strictEqual(result.ref.ok, false);
+    assert.match(result.ref.error, /OP_ELSE may only be used once/);
+    assert.match(result.sim.error, /OP_ELSE may only be used once/);
+  });
+}
+
 // Known divergence, asserted so it stays deliberate rather than becoming a
 // surprise. Post-Genesis, OP_RETURN ends evaluation and @bsv/sdk returns the
 // stack as it stands. The interpreter treats it as a halt the user should see,

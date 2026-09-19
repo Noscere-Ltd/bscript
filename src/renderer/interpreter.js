@@ -22,6 +22,7 @@ class ScriptInterpreter {
     this.breakpoints = new Set();
     this.skipIPIncrement = false; // Flag to prevent double-increment in flow control
     this.condStack = []; // One entry per open if/notIf block: is that branch taken?
+    this.elseUsed = []; // One entry per open if/notIf block: has it had its else?
     this.namedImports = {}; // Store named imports for later expansion
     this.lastCodeSeparator = null; // Instruction index of the last codeSeparator
 
@@ -754,6 +755,7 @@ class ScriptInterpreter {
       if (invert) taken = !taken;
     }
     this.condStack.push(taken);
+    this.elseUsed.push(false);
     this.addHistory(opcode, `Conditional branch: ${taken}`);
   }
 
@@ -769,6 +771,12 @@ class ScriptInterpreter {
     if (this.condStack.length === 0) {
       throw new Error("Cannot execute 'else' - no matching if");
     }
+    // Since Genesis a node allows one else per if (bitcoin-sv interpreter.cpp,
+    // case OP_ELSE). Spend applies this only when given the Genesis flags.
+    if (this.elseUsed[this.elseUsed.length - 1]) {
+      throw new Error('OP_ELSE may only be used once for each OP_IF or OP_NOTIF after Genesis.');
+    }
+    this.elseUsed[this.elseUsed.length - 1] = true;
     const taken = !this.condStack[this.condStack.length - 1];
     this.condStack[this.condStack.length - 1] = taken;
     this.addHistory('else', taken ? 'Enter else block' : 'Skip else block');
@@ -779,6 +787,7 @@ class ScriptInterpreter {
       throw new Error("Cannot execute 'endIf' - no matching if");
     }
     this.condStack.pop();
+    this.elseUsed.pop();
     this.addHistory('endIf', 'End conditional block');
   }
 
@@ -902,6 +911,7 @@ class ScriptInterpreter {
       if (invert) taken = !taken;
     }
     this.condStack.push(taken);
+    this.elseUsed.push(false);
     this.addHistory(opcode, `Conditional branch: ${taken}`);
   }
 

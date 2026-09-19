@@ -4,6 +4,7 @@ const fs = require('fs').promises;
 const https = require('https');
 const { createMenu } = require('./menu');
 const { toHashBuffer } = require('./hash-input');
+const { resolveProjectFile } = require('./chain-paths');
 
 // Lazy load BSV SDK modules when needed (loaded on first use)
 // This avoids potential conflicts with Electron's module loading
@@ -646,39 +647,38 @@ ipcMain.handle('open-chain-dialog', async (event) => {
 
 ipcMain.handle('load-chain-project', async (event, filePath) => {
   try {
-    const projectDir = path.dirname(filePath);
+    // The renderer names the project, so only honour one the user picked in
+    // open-chain-dialog, the same rule save-file applies
+    if (typeof filePath !== 'string' || !grantedFiles.has(path.resolve(filePath))) {
+      return {
+        success: false,
+        error: 'Refusing to load a chain project that was not chosen in a file dialog this session: ' + filePath
+      };
+    }
+
+    const projectDir = path.dirname(path.resolve(filePath));
     const projectContent = await fs.readFile(filePath, 'utf-8');
     const project = JSON.parse(projectContent);
 
-    // Read all referenced .bscript files
+    // The contract is the only file read. Method unlock scripts are not
+    // executed (the chain engine supplies params and preimage itself), so the
+    // `unlock` field is ignored.
+    // The second check follows symlinks, which a downloaded project can carry.
+    const contractPath = resolveProjectFile(projectDir, project.contract);
+    resolveProjectFile(await fs.realpath(projectDir), await fs.realpath(contractPath));
+
     const bscriptFiles = {};
+    bscriptFiles[project.contract] = await fs.readFile(contractPath, 'utf-8');
 
-    // Read contract file
-    if (project.contract) {
-      const contractPath = path.resolve(projectDir, project.contract);
-      bscriptFiles[project.contract] = await fs.readFile(contractPath, 'utf-8');
-    }
-
-    // Read all method unlock scripts
-    if (project.methods) {
-      for (const method of project.methods) {
-        if (method.unlock) {
-          const unlockPath = path.resolve(projectDir, method.unlock);
-          try {
-            bscriptFiles[method.unlock] = await fs.readFile(unlockPath, 'utf-8');
-          } catch (e) {
-            // Empty unlock script is valid
-            bscriptFiles[method.unlock] = '';
-          }
-        }
-      }
-    }
+    // Save writes the contract, so it is granted the way an opened file is
+    grantPath(contractPath);
 
     return {
       success: true,
       project: project,
       bscriptFiles: bscriptFiles,
-      projectPath: filePath
+      projectPath: filePath,
+      contractPath: contractPath
     };
   } catch (error) {
     return { success: false, error: error.message };

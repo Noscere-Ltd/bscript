@@ -354,11 +354,23 @@ async function runScript() {
       interpreter.errorInstruction || 'unknown',
       interpreter.errorLine
     );
+  } finally {
+    // In chain mode the run borrowed the transaction context
+    restoreChainContext();
   }
 }
 
-// Step through script one instruction at a time
+// Step through script one instruction at a time. In chain mode the step run
+// borrows the transaction context until it goes back to idle.
 async function stepScript() {
+  try {
+    await stepOnce();
+  } finally {
+    if (executionMode === 'idle') restoreChainContext();
+  }
+}
+
+async function stepOnce() {
   if (executionMode === 'idle') {
     // Start stepping mode
     const script = editor.getValue();
@@ -434,6 +446,7 @@ async function stepScript() {
 function resetScript() {
   interpreter.reset();
   executionMode = 'idle';
+  restoreChainContext();
   clearDecorations();
   hideErrorToast(); // Clear any error messages
   updateUI();
@@ -835,6 +848,7 @@ async function newFile() {
   if (!(await confirmUnsavedChanges())) return;
 
   editor.setValue(getDefaultScript());
+  toggleChainMode(false);
   currentFilePath = null;
   hasUnsavedChanges = false;
   interpreter.reset();
@@ -857,6 +871,7 @@ async function openFile() {
 
     if (result.success) {
       editor.setValue(result.content);
+      toggleChainMode(false);
       currentFilePath = result.filePath;
       hasUnsavedChanges = false;
       interpreter.reset();

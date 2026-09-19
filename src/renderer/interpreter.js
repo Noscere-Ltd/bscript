@@ -203,12 +203,14 @@ class ScriptInterpreter {
 
           // Handle different import types
           if (imp.isWildcard) {
-            // import * - include all content inline (immediate replacement)
-            resolved = resolved.replace(imp.full, importedContent);
+            // import * - include all content inline (immediate replacement).
+            // Without its comments: a last line that is a comment would
+            // swallow whatever follows the import statement on its line.
+            resolved = resolved.replace(imp.full, this.stripComments(importedContent));
           } else if (imp.macroName) {
             // import macroName - store as named macro for later expansion
             const macroContent = this.extractMacro(importedContent, imp.macroName);
-            this.namedImports[imp.macroName] = macroContent || '';
+            this.namedImports[imp.macroName] = this.stripComments(macroContent || '');
             // Remove the import statement
             resolved = resolved.replace(imp.full, '');
           } else if (imp.macroList) {
@@ -216,7 +218,7 @@ class ScriptInterpreter {
             const macros = imp.macroList.split(',').map(m => m.trim());
             macros.forEach(macroName => {
               const macroContent = this.extractMacro(importedContent, macroName);
-              this.namedImports[macroName] = macroContent || '';
+              this.namedImports[macroName] = this.stripComments(macroContent || '');
             });
             // Remove the import statement
             resolved = resolved.replace(imp.full, '');
@@ -233,6 +235,15 @@ class ScriptInterpreter {
     }
 
     return resolved;
+  }
+
+  // Drop everything from // to the end of each line. Imported bodies go
+  // through this as well: expandMacros pastes them in after the script's own
+  // comments are gone, so a comment left in one became the token "//".
+  stripComments(text) {
+    return text.split('\n')
+      .map((line) => line.replace(/\/\/.*$/, ''))
+      .join('\n');
   }
 
   // Extract a specific macro definition from imported content
@@ -344,9 +355,7 @@ class ScriptInterpreter {
     // Comments come out before macros expand. A name mentioned in a comment
     // is not code, and replacing it there put whole macro bodies into the
     // token stream.
-    const withoutComments = importResolved.split('\n')
-      .map((line) => line.replace(/\/\/.*$/, ''))
-      .join('\n');
+    const withoutComments = this.stripComments(importResolved);
 
     // Expand macros before tokenization
     const expandedScript = this.expandMacros(withoutComments);

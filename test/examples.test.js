@@ -1,9 +1,9 @@
-// Every example script that does not use imports, run with the stack its own
-// header documents. This is the net that catches an interpreter change quietly
-// altering what the shipped examples do.
+// Every example script, run with the stack its own header documents. This is
+// the net that catches an interpreter change quietly altering what the shipped
+// examples do.
 //
-// Examples using `import` are left out: resolving an import goes through
-// window.electronAPI, which only exists inside the app.
+// Each example runs with its own path, so an import resolves relative to the
+// example through the disk reader test/helpers.js puts on window.electronAPI.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -12,6 +12,7 @@ const path = require('node:path');
 const { ScriptInterpreter, narrowAll } = require('./helpers');
 
 const EXAMPLES = path.join(__dirname, '..', 'examples');
+const pathOf = (name) => path.join(EXAMPLES, `${name}.bscript`);
 const read = (name) => fs.readFileSync(path.join(EXAMPLES, `${name}.bscript`), 'utf8');
 
 // Pull the dummy preimage out of an example's header so the test and the
@@ -51,7 +52,11 @@ const CASES = [
     name: 'op-push-tx',
     stack: () => [preimageFrom('op-push-tx')],
     expect: [1]
-  }
+  },
+  { name: 'exampleimport', stack: [150], expect: [150, '0x08', '0x0e', '0x06', '0x14', '0x05', '0xfa'] },
+  { name: 'import-example', stack: [], expect: [21] },
+  { name: 'named-import-example', stack: [], expect: ['0x08'] },
+  { name: 'simple-named-import', stack: [], expect: ['0x08'] }
 ];
 
 for (const { name, stack, expect } of CASES) {
@@ -59,12 +64,41 @@ for (const { name, stack, expect } of CASES) {
     const interp = new ScriptInterpreter();
     interp.txVersion = versionOf(name);
     const initial = typeof stack === 'function' ? stack() : stack;
-    const result = await interp.run(read(name), initial);
+    const result = await interp.run(read(name), initial, pathOf(name));
 
     assert.ok(result.success, `${name} failed: ${result.error}`);
     assert.deepStrictEqual(narrowAll(interp.mainStack), expect);
   });
 }
+
+// Step parses with the file path and then steps, one past the end for the
+// final verdict. It has to land where Run does.
+for (const { name, stack, expect } of CASES.filter((c) => /\bimport\b/.test(read(c.name)))) {
+  test(`${name}.bscript gives the same result under Step as under Run`, async () => {
+    const interp = new ScriptInterpreter();
+    interp.txVersion = versionOf(name);
+    await interp.parse(read(name), stack, pathOf(name));
+    while (interp.ip < interp.instructions.length) await interp.step();
+    await interp.step();
+
+    assert.strictEqual(interp.status, 'success', interp.error);
+    assert.deepStrictEqual(narrowAll(interp.mainStack), expect);
+  });
+}
+
+test('an import * body ending in a comment does not swallow the rest of the line', async () => {
+  const readImportFile = window.electronAPI.readImportFile;
+  window.electronAPI.readImportFile = async () => ({ success: true, content: '2 3 add // five' });
+  try {
+    const interp = new ScriptInterpreter();
+    const result = await interp.run("import * from './lib.bscript' 5 equal", [], pathOf('lib-user'));
+
+    assert.ok(result.success, result.error);
+    assert.deepStrictEqual(narrowAll(interp.mainStack), [1]);
+  } finally {
+    window.electronAPI.readImportFile = readImportFile;
+  }
+});
 
 test('hash-puzzle.bscript is solved by the secret its header names', async () => {
   const interp = new ScriptInterpreter();
@@ -90,13 +124,12 @@ test('p2pkh-checksig.bscript rejects a pubkey that is not the one it locks to', 
   assert.match(result.error, /Verification failed/);
 });
 
-test('every example without imports is covered here', () => {
+test('every example is covered here', () => {
   const covered = new Set([...CASES.map((c) => c.name), 'hash-puzzle', 'p2pkh-checksig']);
   const uncovered = fs.readdirSync(EXAMPLES)
     .filter((f) => f.endsWith('.bscript'))
     .map((f) => f.replace('.bscript', ''))
-    .filter((name) => !covered.has(name))
-    .filter((name) => !/\bimport\b/.test(read(name)));
+    .filter((name) => !covered.has(name));
 
   // macros.bscript uses a quoted string literal, which the tokeniser does not
   // support. Left uncovered deliberately.

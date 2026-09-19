@@ -39,6 +39,25 @@ global.window = {
         return { success: false, error: error.message };
       }
     }
+  },
+  // Imports are read from disk relative to the importing file, the way the
+  // main process handlers resolve-import-path and read-import-file do. The
+  // granted-directory check is left out: there is no dialog under node.
+  electronAPI: {
+    resolveImportPath: async (currentFilePath, importPath) => ({
+      success: true,
+      resolvedPath: path.resolve(path.dirname(currentFilePath), importPath)
+    }),
+    readImportFile: async (filePath) => {
+      try {
+        if (path.extname(filePath) !== '.bscript') {
+          return { success: false, error: 'Imports must be .bscript files: ' + filePath };
+        }
+        return { success: true, content: fs.readFileSync(filePath, 'utf8'), filePath };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    }
   }
 };
 

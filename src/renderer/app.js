@@ -1610,13 +1610,9 @@ async function computePreimage() {
   statusEl.className = 'settings-status visible';
 
   try {
-    // Find OP_CODESEPARATOR offset in the locking script (byte 0xab)
-    let codeSeparatorIndex;
-    for (let i = 0; i < lockingScriptHex.length; i += 2) {
-      if (lockingScriptHex.substr(i, 2) === 'ab') {
-        codeSeparatorIndex = i / 2;
-      }
-    }
+    // Find the last OP_CODESEPARATOR in the locking script, stepping over
+    // push data: a 0xab byte inside a push is not a separator
+    const codeSeparatorIndex = lastCodeSeparatorIndex(hexToBytes(lockingScriptHex));
 
     const result = await window.runar.computePreimage({
       txHex,

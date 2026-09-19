@@ -9,6 +9,8 @@
 // preimage, so a copy that drifts would look like a broken binding.
 
 const { TransactionSignature, LockingScript, Hash } = require('@bsv/sdk');
+const { forEachOpcode, lastCodeSeparatorIndex } = require('../shared/script-walk');
+const { CHECK_PREIMAGE_BINDING_HEX } = require('../renderer/push-tx-binding');
 
 const SIGHASH_ALL_FORKID = 0x41; // the type the binding pins
 
@@ -23,6 +25,26 @@ async function syntheticContext() {
   return _syntheticContext;
 }
 
+// The part of the script the binding's signature check signs: what follows
+// the last OP_CODESEPARATOR before the binding, or all of it when there is
+// none. The VM cuts the script there, so the preimage has to as well.
+// ponytail: static, so it takes the first binding and counts a separator in
+// an untaken branch. Track executed separators if a script needs that.
+function subscriptHexFor(scriptHex) {
+  const bytes = Buffer.from(scriptHex, 'hex');
+  let bindingAt = bytes.length;
+  let found = false;
+  forEachOpcode(bytes, (op, index) => {
+    if (!found && scriptHex.startsWith(CHECK_PREIMAGE_BINDING_HEX, index * 2)) {
+      bindingAt = index;
+      found = true;
+    }
+  });
+
+  const separator = lastCodeSeparatorIndex(bytes.subarray(0, bindingAt));
+  return separator === undefined ? scriptHex : scriptHex.slice((separator + 1) * 2);
+}
+
 // The preimage and its digest for a script the ScriptVM is about to run.
 async function preimageForScript(scriptHex) {
   const context = await syntheticContext();
@@ -31,7 +53,7 @@ async function preimageForScript(scriptHex) {
     ...context,
     otherInputs: [],
     outputs: [],
-    subscript: LockingScript.fromHex(scriptHex),
+    subscript: LockingScript.fromHex(subscriptHexFor(scriptHex)),
     scope: SIGHASH_ALL_FORKID
   }));
 
@@ -41,4 +63,4 @@ async function preimageForScript(scriptHex) {
   };
 }
 
-module.exports = { preimageForScript, syntheticContext, SIGHASH_ALL_FORKID };
+module.exports = { preimageForScript, subscriptHexFor, syntheticContext, SIGHASH_ALL_FORKID };

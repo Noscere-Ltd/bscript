@@ -123,13 +123,7 @@ ChainEngine.prototype.getCodePortion = function(lockingScriptHex) {
 
 // Find the last OP_CODESEPARATOR offset in the locking script
 ChainEngine.prototype.findCodeSeparator = function(lockingScriptHex) {
-  var lastSep;
-
-  forEachOpcode(hexToBytes(lockingScriptHex), function(op, index) {
-    if (op === 0xab) lastSep = index;
-  });
-
-  return lastSep;
+  return lastCodeSeparatorIndex(hexToBytes(lockingScriptHex));
 };
 
 // Get method definition by name

@@ -23,7 +23,11 @@ changing the app itself.
 
 ## The window
 
-Five areas, left to right and top to bottom.
+![The SVSCRIPT window, with the five main areas numbered](docs/images/main-window.png)
+
+Five areas, left to right and top to bottom. The numbers above match the list
+below: **1** toolbar, **2** initial stack, **3** editor, **4** debugger,
+**5** console.
 
 **Toolbar.** Run, Step, Reset, Verify, Chain Mode, Help, Settings, AI, Deploy.
 
@@ -90,6 +94,12 @@ Rule 3 is the one that surprises people. A teaching script that leaves six
 intermediate results on the stack is correct arithmetic and an invalid script.
 Either reduce it to one value or switch to transaction version 2.
 
+![A script that runs to completion and still fails the clean stack rule](docs/images/clean-stack.png)
+
+Here `10 20 add dup 5 mul` ran every instruction without error. Two items were
+left, so at version 1 the verdict is still a failure, and the console names the
+rule.
+
 The shipped examples that need version 2 declare it in a comment at the top:
 
 ```javascript
@@ -115,6 +125,8 @@ judged under. It changes behaviour, not just a displayed number.
 Use version 1 when you want to know whether a script would be accepted on
 chain. Use version 2 when you are exploring, teaching, or deliberately leaving
 working values on the stack.
+
+![The transaction version setting](docs/images/transaction-version.png)
 
 ## Signatures
 
@@ -147,6 +159,8 @@ transaction context as well.
 
 **Clear Context** removes the context and empties the input fields.
 
+![The three transaction context modes in Settings](docs/images/signature-context.png)
+
 ## Verify: checking against a second engine
 
 **Cmd/Ctrl + Shift + V**, or the Verify button, compiles the script and runs it
@@ -158,6 +172,8 @@ Verify needs the Rúnar packages linked. See the Rúnar section of `readme.md`.
 Without them the console says `Rúnar ScriptVM not available`.
 
 ### Reading the output
+
+![Verify reporting a match between the two engines](docs/images/verify.png)
 
 ```
 === Verification Results ===
@@ -296,6 +312,11 @@ every step.
 
 **Reset** returns the chain to the project's `initialState`.
 
+![Chain mode after one transition of the counter contract](docs/images/chain-mode.png)
+
+The console repeats the simulation warning after every step: the transaction
+pays no fee and its txid is provisional.
+
 A method marked terminal ends the chain: its transaction carries no output, so
 there is nothing left to spend. Reset to continue.
 
@@ -328,9 +349,11 @@ selected network.
 you press Deploy. There is no confirmation step and no undo. Select testnet in
 Settings > Bitcoin Network while you are learning.
 
+![The Deploy panel](docs/images/deploy.png)
+
 1. Open **Deploy**.
 2. Paste a funding WIF. The address derives from it and the balance loads.
-3. Enter the amount to lock. The minimum is 546 satoshis, the dust limit.
+3. Enter the amount to lock. The minimum is 1 satoshi.
 4. Press Deploy. The current editor contents are compiled to a locking script,
    funded and broadcast.
 5. On success the txid appears with a WhatsOnChain link, and the balance
@@ -379,7 +402,7 @@ The in-app Help panel has the full syntax with examples.
 | `Preimage NOT verified: no transaction context` | `checkPreimage` was a no-op. Apply a context, or press Verify. |
 | `Not compared: this script checks a signature that the simulator only pretends to verify` | Verify declined a meaningless comparison. Turn on signature verification with a real signature. |
 | `Rúnar ScriptVM not available` | The Rúnar packages are not linked. See `readme.md`. |
-| `Minimum 546 satoshis (dust limit)` | Deploy will not broadcast below the dust limit. |
+| `Minimum 1 satoshi` | Deploy will not broadcast an output below 1 satoshi. |
 | `Result: MISMATCH - Interpreters disagree!` | The ScriptVM is the reference. Treat the interpreter as wrong and report it. |
 
 ### A script that passes at version 2 and fails at version 1

@@ -1505,8 +1505,8 @@ async function executeDeployment() {
     return;
   }
 
-  if (isNaN(satoshis) || satoshis < 546) {
-    statusEl.textContent = 'Minimum 546 satoshis (dust limit)';
+  if (isNaN(satoshis) || satoshis < 1) {
+    statusEl.textContent = 'Minimum 1 satoshi';
     statusEl.className = 'settings-status visible error';
     return;
   }

@@ -20,9 +20,8 @@ test('escapeHtml leaves no tag and no quote intact', () => {
 });
 
 test('renderAIMarkdown emits no tag the reply asked for', () => {
-  // app.js is a renderer global script. Pull the one function out of it.
-  const app = fs.readFileSync(path.join(SRC, 'app.js'), 'utf8');
-  const source = app.match(/function renderAIMarkdown\(text\)[\s\S]*?\n}/)[0];
+  // ai-markdown.js is a renderer global script that reads escapeHtml
+  const source = fs.readFileSync(path.join(SRC, 'ai-markdown.js'), 'utf8');
   const renderAIMarkdown = new Function('escapeHtml', `${source}\nreturn renderAIMarkdown;`)(escapeHtml);
 
   for (const reply of [PAYLOAD, `**bold** ${PAYLOAD}`, '```\n' + PAYLOAD + '\n```', `\`${PAYLOAD}\``]) {

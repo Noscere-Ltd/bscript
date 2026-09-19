@@ -1,23 +1,17 @@
 function ChainEngine() {
   this.project = null;
   this.contractHex = null;        // compiled contract code (hex)
-  this.methodHexMap = {};         // method name -> compiled unlock script hex
   this.currentState = null;       // current state values { fieldName: value }
   this.currentUtxo = null;        // { txid, vout, satoshis, lockingScript }
   this.history = [];              // array of { step, method, prevState, newState, txid }
   this.stepCount = 0;
 }
 
-ChainEngine.prototype.loadProject = function(projectJson, bscriptFiles) {
-  // projectJson is the parsed .bsm.json
-  // bscriptFiles is { relativePath: fileContent } map
-  this.project = projectJson;
-
-  // Compile the contract locking script
-  var contractSource = bscriptFiles[projectJson.contract];
-  if (!contractSource) throw new Error('Contract file not found: ' + projectJson.contract);
-
-  // Parse and compile (use a temporary interpreter for macro expansion)
+// Compile contract source to hex. loadProject uses it, and the chain panel
+// uses it again before each run to see whether the editor still holds the
+// contract the current UTXO was built from.
+ChainEngine.prototype.compileContract = function(contractSource) {
+  // Use a temporary interpreter for macro expansion
   var tempInterp = new ScriptInterpreter();
   var expanded = tempInterp.expandMacros(contractSource);
   // Strip comments and tokenize
@@ -29,47 +23,30 @@ ChainEngine.prototype.loadProject = function(projectJson, bscriptFiles) {
     var lineTokens = line.split(/\s+/).filter(function(t) { return t; });
     tokens.push.apply(tokens, lineTokens);
   }
-  this.contractHex = compileInstructionsToHex(tokens);
+  return compileInstructionsToHex(tokens);
+};
 
-  // Compile each method's unlock script
-  this.methodHexMap = {};
-  for (var m = 0; m < projectJson.methods.length; m++) {
-    var method = projectJson.methods[m];
-    var src = bscriptFiles[method.unlock];
-    if (!src) {
-      // Empty unlock script is valid (params-only methods)
-      this.methodHexMap[method.name] = '';
-      continue;
-    }
-    var mExpanded = tempInterp.expandMacros(src);
-    var mTokens = [];
-    var mLines = mExpanded.split('\n');
-    for (var j = 0; j < mLines.length; j++) {
-      var mLine = mLines[j].replace(/\/\/.*$/, '').trim();
-      if (!mLine) continue;
-      var mLineTokens = mLine.split(/\s+/).filter(function(t) { return t; });
-      mTokens.push.apply(mTokens, mLineTokens);
-    }
-    this.methodHexMap[method.name] = mTokens.length > 0 ? compileInstructionsToHex(mTokens) : '';
-  }
+ChainEngine.prototype.loadProject = function(projectJson, bscriptFiles) {
+  // projectJson is the parsed .bsm.json
+  // bscriptFiles is { relativePath: fileContent } map
+  var contractSource = bscriptFiles[projectJson.contract];
+  if (!contractSource) throw new Error('Contract file not found: ' + projectJson.contract);
 
-  // Set initial state
-  this.currentState = {};
-  for (var key in projectJson.initialState) {
-    this.currentState[key] = projectJson.initialState[key];
-  }
+  // Everything is built on a scratch engine, because compiling the contract
+  // and serialising the initial state can both throw. Assigning as we went
+  // left the new project's metadata over the old project's hex and UTXO.
+  // Method unlock scripts are not compiled: they are never executed.
+  var next = new ChainEngine();
+  next.project = projectJson;
+  next.contractHex = next.compileContract(contractSource);
+  next.resetChain();
 
-  // Create synthetic genesis UTXO
-  var initialLocking = this.buildLockingScript(this.currentState);
-  this.currentUtxo = {
-    txid: '0000000000000000000000000000000000000000000000000000000000000000',
-    vout: 0,
-    satoshis: projectJson.satoshis || 10000,
-    lockingScript: initialLocking
-  };
-
-  this.history = [];
-  this.stepCount = 0;
+  this.project = next.project;
+  this.contractHex = next.contractHex;
+  this.currentState = next.currentState;
+  this.currentUtxo = next.currentUtxo;
+  this.history = next.history;
+  this.stepCount = next.stepCount;
 };
 
 // Serialize state fields into hex bytes
@@ -83,8 +60,16 @@ ChainEngine.prototype.serializeState = function(stateValues) {
     var fieldHex;
 
     if (field.type === 'int') {
-      // Encode as script number
-      var encoded = encodeScriptNumber(BigInt(value || 0));
+      // Encode as script number. A Number past 2^53 has already lost digits
+      // in JSON.parse, so it is refused rather than serialised wrong.
+      if (!value) value = 0;
+      var isInt = typeof value === 'number' ? Number.isSafeInteger(value)
+        : typeof value === 'string' && /^-?\d+$/.test(value);
+      if (!isInt) {
+        throw new Error('State field "' + field.name + '" must be a safe integer ' +
+          'or a decimal string (quote values beyond 2^53), got: ' + JSON.stringify(value));
+      }
+      var encoded = encodeScriptNumber(BigInt(value));
       if (encoded.length === 0) {
         // Zero encodes as empty, but we need to push it as OP_0
         hexParts.push('00');
@@ -99,7 +84,11 @@ ChainEngine.prototype.serializeState = function(stateValues) {
         hexParts.push('00'); // OP_0 for empty
         continue;
       }
-      var dataBytes = hexToBytes(rawHex);
+      if (!/^(0x)?([0-9a-fA-F]{2})*$/.test(rawHex)) {
+        throw new Error('State field "' + field.name + '" must be hex bytes, with or ' +
+          'without a 0x prefix and an even number of digits, got: ' + rawHex);
+      }
+      var dataBytes = hexToBytes(rawHex.replace(/^0x/, ''));
       var pushBytes2 = emitPushData(dataBytes);
       fieldHex = bytesToHex(new Uint8Array(pushBytes2));
     }
@@ -134,13 +123,7 @@ ChainEngine.prototype.getCodePortion = function(lockingScriptHex) {
 
 // Find the last OP_CODESEPARATOR offset in the locking script
 ChainEngine.prototype.findCodeSeparator = function(lockingScriptHex) {
-  var lastSep;
-
-  forEachOpcode(hexToBytes(lockingScriptHex), function(op, index) {
-    if (op === 0xab) lastSep = index;
-  });
-
-  return lastSep;
+  return lastCodeSeparatorIndex(hexToBytes(lockingScriptHex));
 };
 
 // Get method definition by name

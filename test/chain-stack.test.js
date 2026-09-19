@@ -12,8 +12,15 @@ const PREIMAGE_HEX = '0200000' + '0'.repeat(9);
 
 // chain-ui.js is a renderer script with no exports. Load it with stubs for the
 // globals it reaches for, and hand back the functions under test.
-function loadChainUi({ params = [], paramValues = {}, interpreter = null, txVersion = 1 } = {}) {
-  const src = fs.readFileSync(path.join(SRC, 'chain-ui.js'), 'utf8');
+function loadChainUi({
+  params = [], paramValues = {}, interpreter = null, txVersion = 1,
+  newStateText = '{"count":1}', editorHex = 'c0de', logs = []
+} = {}) {
+  // stack-input.js goes in first, the way boot.js loads it before chain-ui.js
+  const src = 'var currentFilePath = null; var executionMode = \'stepping\';\n' +
+    fs.readFileSync(path.join(SRC, 'run-lock.js'), 'utf8') +
+    fs.readFileSync(path.join(SRC, 'stack-input.js'), 'utf8') +
+    fs.readFileSync(path.join(SRC, 'chain-ui.js'), 'utf8');
 
   const method = { name: 'increment', params, terminal: false };
   const engine = {
@@ -21,6 +28,8 @@ function loadChainUi({ params = [], paramValues = {}, interpreter = null, txVers
     currentState: { count: 0 },
     currentUtxo: { txid: 'ab'.repeat(32), vout: 0, satoshis: 10000, lockingScript: '51' },
     stepCount: 0,
+    contractHex: 'c0de',
+    compileContract: () => editorHex,
     getMethod: () => method,
     prepareTransition: () => ({
       prevUtxo: engine.currentUtxo,
@@ -32,7 +41,7 @@ function loadChainUi({ params = [], paramValues = {}, interpreter = null, txVers
 
   const elements = {
     'chain-method-select': { value: 'increment' },
-    'chain-new-state-input': { value: '{"count":1}' }
+    'chain-new-state-input': { value: newStateText }
   };
 
   const document = {
@@ -56,14 +65,15 @@ function loadChainUi({ params = [], paramValues = {}, interpreter = null, txVers
   const factory = new Function(
     'ChainEngine', 'document', 'window', 'logToConsole', 'editor', 'interpreter', 'updateUI',
     'settings',
-    `${src}\nreturn { prepareChainRun, collectNewState };`
+    `${src}\nreturn { prepareChainRun, collectNewState, chainParamStack, runChainTransition,
+      mode: () => executionMode };`
   );
 
   const api = factory(
     function ChainEngine() { return engine; },
     document,
     window,
-    () => {},
+    (message) => { logs.push(message); },
     { getValue: () => '', setValue: () => {} },
     interpreter || { setTransactionContext: () => {}, run: async () => ({ success: true }), reset: () => {} },
     () => {},
@@ -103,7 +113,7 @@ test('method parameters sit below the preimage', async () => {
   });
   const run = await prepareChainRun();
 
-  assert.deepStrictEqual(run.initialStack, [42, '0xbeef', '0x' + PREIMAGE_HEX]);
+  assert.deepStrictEqual(run.initialStack, [42n, '0xbeef', '0x' + PREIMAGE_HEX]);
 });
 
 test('chain mode hands the interpreter the transaction being spent', async () => {
@@ -121,6 +131,98 @@ test('chain mode hands the interpreter the transaction being spent', async () =>
     prevScriptHex: '51',
     satoshis: 10000
   });
+});
+
+test('a parameter that is neither decimal nor 0x hex stops the run', async () => {
+  // It used to be pushed as a raw string
+  const logs = [];
+  const { prepareChainRun, chainParamStack } = loadChainUi({
+    params: [{ name: 'tag', type: 'bytes' }], paramValues: { tag: 'hello' }, logs
+  });
+
+  assert.throws(() => chainParamStack({ params: [{ name: 'tag' }] }, { tag: 'hello' }), /"tag"/);
+  assert.strictEqual(await prepareChainRun(), null);
+  assert.match(logs.join('\n'), /"tag"/);
+});
+
+test('an integer parameter beyond 2^53 never reaches the stack rounded', () => {
+  const { chainParamStack } = loadChainUi();
+  const method = { params: [{ name: 'amount' }] };
+  let items;
+  try {
+    items = chainParamStack(method, { amount: '9007199254740993' });
+  } catch (error) {
+    assert.match(error.message, /"amount"/);
+    return;
+  }
+  // If the stack-input parser keeps the digits, that is fine too
+  assert.strictEqual(String(items[0]), '9007199254740993');
+});
+
+test('invalid New State JSON stops the transition', async () => {
+  // It used to be ignored, and the transition reported success with the old state
+  const logs = [];
+  const { prepareChainRun, collectNewState } = loadChainUi({ newStateText: '{count: 1', logs });
+
+  assert.throws(() => collectNewState(), /New State is not valid JSON/);
+  assert.strictEqual(await prepareChainRun(), null);
+  assert.match(logs.join('\n'), /New State is not valid JSON/);
+});
+
+test('a chain run is refused once the editor no longer holds the loaded contract', async () => {
+  const logs = [];
+  const { prepareChainRun } = loadChainUi({ editorHex: 'beef', logs });
+
+  assert.strictEqual(await prepareChainRun(), null);
+  assert.match(logs.join('\n'), /no longer matches/);
+});
+
+test('a chain run puts back the transaction context it borrowed', async () => {
+  // Settings configured a sighash context. The chain run needs its own, and
+  // must not leave it behind for the next plain run.
+  const interpreter = {
+    txContext: { sighash: 'aa'.repeat(32) },
+    txContextMode: 'sighash',
+    mainStack: [],
+    setTransactionContext(context) { this.txContext = context; this.txContextMode = 'transaction'; },
+    run: async function () {
+      assert.strictEqual(this.txContextMode, 'transaction', 'the run itself sees the chain context');
+      return { success: false, error: 'stop here' };
+    },
+    reset: () => {}
+  };
+  const { runChainTransition } = loadChainUi({ interpreter });
+  await runChainTransition();
+
+  assert.deepStrictEqual(interpreter.txContext, { sighash: 'aa'.repeat(32) });
+  assert.strictEqual(interpreter.txContextMode, 'sighash');
+});
+
+test('a second Run Transition while the first is in flight does nothing', async () => {
+  // F57: two clicks advanced the chain twice on one transaction
+  let open;
+  const gate = new Promise((resolve) => { open = resolve; });
+  let runs = 0;
+  const interpreter = {
+    mainStack: [],
+    setTransactionContext: () => {},
+    run: async () => { runs++; await gate; return { success: false, error: 'stop here' }; },
+    reset: () => {}
+  };
+  const { runChainTransition, mode } = loadChainUi({ interpreter });
+
+  const first = runChainTransition();
+  await runChainTransition();
+  open();
+  await first;
+  assert.strictEqual(runs, 1);
+
+  // F73: the transition ended whatever step run was in progress
+  assert.strictEqual(mode(), 'idle');
+
+  // and the lock is released afterwards
+  await runChainTransition();
+  assert.strictEqual(runs, 2);
 });
 
 test('prepareChainRun reports failure instead of returning a partial stack', async () => {

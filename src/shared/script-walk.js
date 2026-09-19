@@ -38,6 +38,17 @@ function usesOpcode(bytes, opcodes) {
   return found;
 }
 
+// Byte offset of the last OP_CODESEPARATOR that is an opcode, or undefined.
+// Scanning for the byte 0xab finds it inside pushed data too: a pubkey hash
+// holding ab cut the scriptCode short and every signature over it was wrong.
+function lastCodeSeparatorIndex(bytes) {
+  var last;
+  forEachOpcode(bytes, function (op, index) {
+    if (op === 0xab) last = index;
+  });
+  return last;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { forEachOpcode, usesOpcode };
+  module.exports = { forEachOpcode, usesOpcode, lastCodeSeparatorIndex };
 }

@@ -288,8 +288,8 @@ preimage is substituted and the binding is enforced.
 ## Chain mode
 
 Chain mode steps a stateful contract through its methods. The contract's state
-is stored after an `OP_RETURN` in the locking script, and each method has an
-unlocking script that moves the state from one value to the next.
+is stored after an `OP_RETURN` in the locking script, and each method is a
+spend that moves the state from one value to the next.
 
 **The chain panel simulates transitions locally. Nothing is broadcast.** The
 txid it shows is provisional until the transaction is signed and broadcast for
@@ -305,8 +305,9 @@ every step.
    toggles between the two panels.
 2. The console lists the project's state fields and methods.
 3. Pick a method, fill in its parameters, and set the new state values.
-4. Press Run. The contract executes against the unlocking script the method
-   supplies.
+4. Press Run. The contract executes with the method's parameters and the
+   preimage of the spending transaction on the stack. The `unlock` file a
+   method names is not executed.
 5. On success the chain advances: the new state becomes current and the step
    count increases. On failure the console reports why and the state does not
    move.
@@ -339,7 +340,9 @@ there is nothing left to spend. Reset to continue.
 }
 ```
 
-Paths are relative to the project file.
+Paths are relative to the project file. The contract must be a `.bscript`
+file inside the project's directory. The `unlock` field is kept in the format
+and ignored.
 
 ## Deploying a script
 

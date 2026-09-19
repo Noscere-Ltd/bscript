@@ -199,8 +199,7 @@ Result: MATCH - Both interpreters succeed with the same final stack
   engine, so you can see whether they failed for the same cause.
 - **MISMATCH** — one engine succeeds and the other fails, or both succeed with
   different final stacks. The interpreter is the one to suspect; the ScriptVM
-  is the reference. The exception is a second `else` in one `if`: the
-  interpreter rejects it, as a BSV node does, and the ScriptVM accepts it.
+  is the reference.
 - **The script does not compile, so nothing was compared: ...** — the script
   has an error, and neither engine ran it.
 - **Not compared: ...** — the comparison would have been meaningless, and the
@@ -440,7 +439,7 @@ The in-app Help panel has the full syntax with examples.
 | `Not compared: this script checks a signature that the simulator only pretends to verify` | Verify declined a meaningless comparison. Turn on signature verification with a real signature. |
 | `Rúnar ScriptVM not available` | The vendored `ScriptVM` failed to load. See `src/vendor/runar/README.md`. |
 | `Minimum 1 satoshi` | Deploy will not broadcast an output below 1 satoshi. |
-| `Result: MISMATCH - ...` | One engine succeeds and the other fails, or the final stacks differ. The ScriptVM is the reference. Treat the interpreter as wrong and report it, unless the script has a second `else` in one `if`. |
+| `Result: MISMATCH - ...` | One engine succeeds and the other fails, or the final stacks differ. The ScriptVM is the reference. Treat the interpreter as wrong and report it. |
 | `Result: BOTH FAILED - Local: ... \| ScriptVM: ...` | Both engines reject the script. Compare the two reasons. |
 | `The script does not compile, so nothing was compared` | Verify found a compile error. Fix the script and press Verify again. |
 | `OP_ELSE may only be used once for each OP_IF or OP_NOTIF after Genesis.` | An `if` has a second `else`. BSV nodes reject this since Genesis. |

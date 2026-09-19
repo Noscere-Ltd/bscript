@@ -7,6 +7,24 @@
 // and Verify called that a MISMATCH. The VM now runs under the same version.
 
 const { pushDataHex } = require('../shared/push-data');
+const { forEachOpcode } = require('../shared/script-walk');
+
+// Since Genesis a node allows one OP_ELSE per OP_IF, in skipped branches as
+// well, so the opcodes alone decide it. Spend applies the rule only under
+// explicit Genesis flags, which the VM does not pass.
+function hasSecondElse(bytes) {
+  const elseUsed = [];
+  let found = false;
+  forEachOpcode(bytes, (op) => {
+    if (op >= 0x63 && op <= 0x66) elseUsed.push(false); // IF, NOTIF, VERIF, VERNOTIF
+    else if (op === 0x68) elseUsed.pop();               // ENDIF
+    else if (op === 0x67 && elseUsed.length > 0) {      // ELSE
+      if (elseUsed[elseUsed.length - 1]) found = true;
+      elseUsed[elseUsed.length - 1] = true;
+    }
+  });
+  return found;
+}
 
 // vmModule is the vendored vm/index.js, passed in because it is ESM.
 function runInVm(vmModule, { scriptHex, initialStackHex, txVersion }) {
@@ -35,6 +53,11 @@ function runInVm(vmModule, { scriptHex, initialStackHex, txVersion }) {
     success = false;
     vmError = result.stack.length + ' items left on the stack, and version 1 ' +
       'requires exactly one (clean stack)';
+  }
+
+  if (success && hasSecondElse(hexToBytes(scriptHex))) {
+    success = false;
+    vmError = 'OP_ELSE may only be used once for each OP_IF or OP_NOTIF after Genesis.';
   }
 
   return {

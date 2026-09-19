@@ -66,3 +66,17 @@ test('the initial stack still reaches the VM as the unlocking script', async () 
   assert.strictEqual(result.success, true, result.vmError);
   assert.deepStrictEqual(result.stack, ['01']);
 });
+
+// D12: the simulator rejects a second else, so the VM side of Verify must too
+test('both engines reject a second else, executed or skipped', async () => {
+  const vm = await loadVm();
+  for (const source of ['1 if 2 else 3 else 1 endIf', '0 if 1 if 2 else 3 else 4 endIf endIf 1',
+    '1 if 1 else 0 endIf']) {
+    const scriptHex = await compile(source);
+    const result = runInVm(vm, { scriptHex, initialStackHex: [], txVersion: 2 });
+    assert.strictEqual(result.success, await local(source, 2), source);
+  }
+  const twice = runInVm(vm, { scriptHex: await compile('1 if 2 else 3 else 1 endIf'), initialStackHex: [], txVersion: 2 });
+  assert.strictEqual(twice.success, false);
+  assert.match(twice.vmError, /OP_ELSE/);
+});

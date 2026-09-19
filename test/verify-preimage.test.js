@@ -20,21 +20,11 @@ const read = (name) => fs.readFileSync(path.join(EXAMPLES, `${name}.bscript`), '
 const compile = async (source) =>
   compileInstructionsToHex(await new ScriptInterpreter().parse(source, []));
 
-// runar-testing is an optional peer here: the app links it, a bare checkout
-// may not have it.
-const loadVm = async (t) => {
-  try {
-    return await import(require.resolve('runar-testing'));
-  } catch (err) {
-    t.skip(`runar-testing is not resolvable here (${err.code || err.message})`);
-    return null;
-  }
-};
+// The VM is vendored under src/vendor/runar, so it is always present.
+const loadVm = () => import('../src/vendor/runar/vm/index.js');
 
-test('the derived preimage satisfies the binding in the ScriptVM', async (t) => {
-  const vmModule = await loadVm(t);
-  if (!vmModule) return;
-  const { ScriptVM, hexToBytes } = vmModule;
+test('the derived preimage satisfies the binding in the ScriptVM', async () => {
+  const { ScriptVM, hexToBytes } = await loadVm();
 
   const lockingHex = await compile(read('op-push-tx'));
   const { preimageHex } = await preimageForScript(lockingHex);
@@ -52,10 +42,8 @@ test('the derived preimage satisfies the binding in the ScriptVM', async (t) => 
     `the derived preimage was rejected: ${withDerived.error}`);
 });
 
-test('every shipped covenant passes the binding with the derived preimage', async (t) => {
-  const vmModule = await loadVm(t);
-  if (!vmModule) return;
-  const { ScriptVM, hexToBytes } = vmModule;
+test('every shipped covenant passes the binding with the derived preimage', async () => {
+  const { ScriptVM, hexToBytes } = await loadVm();
 
   for (const name of ['covenant-locktime', 'covenant-output-hash', 'op-push-tx']) {
     const lockingHex = await compile(read(name));
@@ -96,9 +84,7 @@ test('the derived preimage is the digest the sighash claims', async () => {
   assert.strictEqual(crypto.createHash('sha256').update(once).digest('hex'), sighashHex);
 });
 
-test('the synthetic context comes from the VM, not from a copy', async (t) => {
-  const vmModule = await loadVm(t);
-  if (!vmModule) return;
+test('the synthetic context comes from the VM, not from a copy', async () => {
   const { syntheticContext } = require('../src/main/verify-preimage');
   const context = await syntheticContext();
 

@@ -11,24 +11,22 @@ npm run dev        # run with DevTools
 npm test           # node --test test/*.test.js
 ```
 
-### Rúnar packages
+`@bsv/sdk` is pinned to an exact version and `package-lock.json` is committed.
+It is the oracle the test suite checks the interpreter against, and its rules
+do change between releases: 2.7.1 added a Chronicle activation gate that made
+a previously valid signature invalid. Upgrade it deliberately and read the
+diff.
 
-`runar-testing` and `runar-sdk` are **not on npm and not in `package.json`**.
-They are symlinked into `node_modules` from a local checkout of
-https://github.com/icellan/runar:
+### Rúnar code
 
-```bash
-git clone https://github.com/icellan/runar ~/bsv/runar
-cd ~/bsv/runar && npm install && npm run build
-cd /path/to/bscript
-ln -s ~/bsv/runar/packages/runar-testing node_modules/runar-testing
-ln -s ~/bsv/runar/packages/runar-sdk     node_modules/runar-sdk
-```
+`runar-testing` and `runar-sdk` are **not on npm**. The subset the app calls is
+vendored under `src/vendor/runar`: the `ScriptVM` behind Verify, the wallet and
+broadcast behind Deploy, and `SYNTHETIC_SPEND_CONTEXT`, the spend that Verify
+derives a preimage from.
 
-They supply the `ScriptVM` behind Verify, the wallet and broadcast behind
-Deploy, and `SYNTHETIC_SPEND_CONTEXT`, the spend that Verify derives a preimage
-from. Without them the editor, interpreter and debugger still work; Verify
-reports `Rúnar ScriptVM not available`, and the tests that need them skip.
+It used to be symlinked into `node_modules` from a local checkout, which meant
+`npm install` removed it without a word. `src/vendor/runar/README.md` records
+the upstream commit and how to re-sync.
 
 ## Project structure
 
@@ -43,6 +41,7 @@ bscript/
 │   │   └── verify-preimage.js   # Preimage of the ScriptVM synthetic spend
 │   ├── preload/
 │   │   └── preload.js           # contextBridge: electronAPI, bsv, runar, ai
+│   ├── vendor/runar/            # Vendored Rúnar subset (see its README)
 │   ├── shared/                  # Loaded by both processes
 │   │   ├── push-data.js         # Minimal push encoding
 │   │   └── script-walk.js       # Opcode walker over compiled script bytes
@@ -253,7 +252,7 @@ console or CDP session: it opens a modal dialog and blocks the connection.
 | A new renderer file does nothing | Not added to `APP_SCRIPTS` in `boot.js` |
 | An opcode runs but will not compile | Missing from `OPCODE_MAP` in `compiler.js` |
 | An opcode compiles but is not highlighted | Missing from `keywords` in `syntax.js` |
-| Verify reports the VM is unavailable | Rúnar packages not linked |
+| Verify reports the VM is unavailable | The preload bridge, or the vendored VM under `src/vendor/runar` |
 | A script runs but fails at the end | The version 1 clean stack rule |
 
 ## Resources

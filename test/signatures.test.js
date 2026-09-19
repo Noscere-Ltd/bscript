@@ -78,9 +78,12 @@ function throughSpend(signatureHex, version = 1) {
 }
 
 test('a signature verifies under the scope it was made with', async () => {
-  for (const scope of [BIP143, OTDA]) {
-    const signatureHex = signUnder(scope);
-    const result = verifySig({ signatureHex, pubKeyHex, txContext: context(), requireLowS: true });
+  // The 0x20 scope is only valid after Chronicle, which version > 1 signals, so
+  // each scope is checked on the lowest version that admits it.
+  for (const [scope, version] of [[BIP143, 1], [OTDA, 2]]) {
+    const signatureHex = signUnder(scope, context(version));
+    const result = verifySig({
+      signatureHex, pubKeyHex, txContext: context(version), requireLowS: true });
 
     assert.ok(result.success, result.error);
     assert.strictEqual(result.valid, true, `scope 0x${scope.toString(16)}`);
@@ -90,34 +93,59 @@ test('a signature verifies under the scope it was made with', async () => {
 
 test('the same bytes under the wrong scope cover a different message', async () => {
   // Only the sighash byte changes, so nothing but the choice of digest
-  // algorithm can explain the difference.
+  // algorithm can explain the difference. Version 2 admits both scopes, so the
+  // Chronicle gate cannot be what rejects these.
   for (const [made, claimed] of [[BIP143, OTDA], [OTDA, BIP143]]) {
-    const signatureHex = signUnder(made).slice(0, -2) + claimed.toString(16);
-    const result = verifySig({ signatureHex, pubKeyHex, txContext: context(), requireLowS: true });
+    const signatureHex = signUnder(made, context(2)).slice(0, -2) + claimed.toString(16);
+    const result = verifySig({
+      signatureHex, pubKeyHex, txContext: context(2), requireLowS: true });
 
     assert.ok(result.success, result.error);
     assert.strictEqual(result.valid, false, `made 0x${made.toString(16)}, claimed 0x${claimed.toString(16)}`);
   }
 });
 
-test('@bsv/sdk reaches the same verdict on the same inputs', () => {
-  for (const scope of [BIP143, OTDA]) {
-    const signatureHex = signUnder(scope);
-    assert.strictEqual(throughSpend(signatureHex).ok, true, `scope 0x${scope.toString(16)}`);
+test('the Chronicle scope is refused on a spend that predates it', () => {
+  // @bsv/sdk gates the 0x20 scope on Chronicle and reads version > 1 as
+  // activated, so a version 1 spend claiming it must fail here too rather than
+  // be reported valid against a node that would refuse it.
+  const signatureHex = signUnder(OTDA, context(1));
 
-    const wrongScope = signatureHex.slice(0, -2) + (scope === BIP143 ? '61' : '41');
-    assert.strictEqual(throughSpend(wrongScope).ok, false);
+  const result = verifySig({
+    signatureHex, pubKeyHex, txContext: context(1), requireLowS: true });
+  assert.strictEqual(result.success, false);
+  assert.match(result.error, /invalid before Chronicle/);
+
+  assert.strictEqual(throughSpend(signatureHex, 1).ok, false);
+});
+
+test('@bsv/sdk reaches the same verdict on the same inputs', () => {
+  // @bsv/sdk accepts the 0x20 scope only after Chronicle, and with no explicit
+  // verify flags it reads version > 1 as Chronicle having activated, so each
+  // scope is checked on the lowest version that admits it.
+  for (const [scope, version] of [[BIP143, 1], [OTDA, 2]]) {
+    const signatureHex = signUnder(scope, context(version));
+    assert.strictEqual(throughSpend(signatureHex, version).ok, true, `scope 0x${scope.toString(16)}`);
+  }
+
+  // Version 2 admits both scopes, so a swapped scope byte fails on the digest
+  // it selects rather than on the Chronicle gate.
+  for (const [made, claimed] of [[BIP143, OTDA], [OTDA, BIP143]]) {
+    const signatureHex = signUnder(made, context(2)).slice(0, -2) + claimed.toString(16);
+    assert.strictEqual(throughSpend(signatureHex, 2).ok, false,
+      `made 0x${made.toString(16)}, claimed 0x${claimed.toString(16)}`);
   }
 });
 
 test('the interpreter verifies both scopes in transaction mode', async () => {
-  for (const scope of [BIP143, OTDA]) {
+  for (const [scope, version] of [[BIP143, 1], [OTDA, 2]]) {
     const interp = new ScriptInterpreter();
     interp.applyFinalRules = false;
     interp.enableSignatures = true;
-    interp.setTransactionContext(context());
+    interp.setTransactionContext(context(version));
 
-    const result = await interp.run(`0x${pubKeyHex} checkSig`, ['0x' + signUnder(scope)]);
+    const result = await interp.run(
+      `0x${pubKeyHex} checkSig`, ['0x' + signUnder(scope, context(version))]);
 
     assert.ok(result.success, result.error);
     assert.deepStrictEqual(narrowAll(interp.mainStack), [1], `scope 0x${scope.toString(16)}`);
@@ -128,9 +156,9 @@ test('the interpreter rejects a signature whose scope does not match', async () 
   const interp = new ScriptInterpreter();
   interp.applyFinalRules = false;
   interp.enableSignatures = true;
-  interp.setTransactionContext(context());
+  interp.setTransactionContext(context(2));
 
-  const wrongScope = signUnder(BIP143).slice(0, -2) + '61';
+  const wrongScope = signUnder(BIP143, context(2)).slice(0, -2) + '61';
   const result = await interp.run(`0x${pubKeyHex} checkSig`, ['0x' + wrongScope]);
 
   assert.ok(result.success, result.error);

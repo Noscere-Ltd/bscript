@@ -3,10 +3,10 @@
 //
 // The VM takes scripts, not transactions: it builds its own Spend from a fixed
 // synthetic one. So a script containing the binding can only pass there if the
-// preimage on the stack is the preimage of that synthetic spend. runar-testing
-// exports the context for exactly this, and deriving it from the export rather
-// than copying the values is the point: the version is part of the preimage,
-// so a copy that drifts would look like a broken binding.
+// preimage on the stack is the preimage of that synthetic spend. The vendored
+// VM exports the context for exactly this, and deriving it from that export
+// rather than copying the values is the point: the version is part of the
+// preimage, so a copy that drifts would look like a broken binding.
 
 const { TransactionSignature, LockingScript, Hash } = require('@bsv/sdk');
 
@@ -16,8 +16,8 @@ let _syntheticContext = null;
 
 async function syntheticContext() {
   if (!_syntheticContext) {
-    // Deep import: the VM's own module, which is where the constant lives
-    const vm = await import('runar-testing/dist/vm/script-vm.js');
+    // The VM's own module, which is where the constant lives
+    const vm = await import('../vendor/runar/vm/script-vm.js');
     _syntheticContext = vm.SYNTHETIC_SPEND_CONTEXT;
   }
   return _syntheticContext;

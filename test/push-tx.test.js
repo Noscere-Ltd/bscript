@@ -58,15 +58,13 @@ async function compile(source) {
   return compileInstructionsToHex(await interp.parse(source, []));
 }
 
-test('the vendored binding matches the Runar compiler export', async (t) => {
-  let runar;
-  try {
-    runar = await import(require.resolve('runar-testing/node_modules/runar-compiler'));
-  } catch (err) {
-    t.skip(`runar-compiler is not resolvable here (${err.code || err.message}); ` +
-      'the vendored bytes cannot be pinned in this checkout');
-    return;
-  }
+// The renderer's constant is a hex literal. This pins it against the Runar
+// compiler's own opcode-level assembly of the same binding, vendored under
+// src/vendor/runar/compiler. Both are now frozen at the same upstream commit,
+// so this catches an edit to either copy, not upstream drift; re-syncing the
+// vendored tree is what catches that.
+test('the vendored binding matches the Runar compiler construction', async () => {
+  const runar = await import('../src/vendor/runar/compiler/oppushtx-codegen.js');
   assert.strictEqual(CHECK_PREIMAGE_BINDING_HEX, runar.CHECK_PREIMAGE_BINDING_HEX);
 });
 

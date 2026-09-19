@@ -10,11 +10,22 @@ let currentFilePath = null; // Track current file for Save operation
 let hasUnsavedChanges = false; // Track dirty state
 let errorLineDecoration = []; // Track error line decoration
 
+let currentView = 'script'; // 'script', 'hex', 'asm'
+
 // Settings
 let settings = {
   enableSignatures: false,
-  network: 'mainnet'
+  network: 'mainnet',
+  txVersion: 1,
+  substitutePreimage: true,
+  aiProvider: 'claude',
+  aiApiKey: '',
+  aiModel: ''
 };
+
+// AI chat state
+let aiMessages = []; // conversation history for API calls
+let aiLoading = false;
 
 // Initialize Monaco Editor
 require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
@@ -74,6 +85,9 @@ require(['vs/editor/editor.main'], function () {
     window.electronAPI.onMenuAction('menu-clear-console', clearConsole);
     window.electronAPI.onMenuAction('menu-about', showAbout);
     window.electronAPI.onMenuAction('menu-shortcuts', showKeyboardShortcuts);
+    window.electronAPI.onMenuAction('menu-verify-script', verifyScript);
+    window.electronAPI.onMenuAction('menu-deploy-script', showDeploy);
+    window.electronAPI.onMenuAction('menu-open-chain', openChainProject);
   }
 
   // Initial UI update
@@ -127,6 +141,14 @@ endIf
 `;
 }
 
+function debounce(fn, delay) {
+  let timer;
+  return function(...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
 // Setup event handlers for UI controls
 function setupEventHandlers() {
   document.getElementById('btn-run').addEventListener('click', runScript);
@@ -140,11 +162,38 @@ function setupEventHandlers() {
   document.getElementById('btn-close-settings').addEventListener('click', hideSettings);
   document.getElementById('btn-close-error-toast').addEventListener('click', hideErrorToast);
 
+  // View toggle buttons
+  document.querySelectorAll('.view-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchView(btn.dataset.view));
+  });
+
+  // Verify button
+  document.getElementById('btn-verify').addEventListener('click', verifyScript);
+
+  // Chain mode
+  document.getElementById('btn-chain-mode').addEventListener('click', function() {
+    if (chainModeActive) {
+      toggleChainMode(false);
+    } else if (chainEngine.project) {
+      toggleChainMode(true);
+    } else {
+      openChainProject();
+    }
+  });
+  document.getElementById('btn-chain-run').addEventListener('click', runChainTransition);
+  document.getElementById('btn-chain-reset').addEventListener('click', resetChainState);
+  document.getElementById('chain-method-select').addEventListener('change', renderMethodParams);
+
   // Settings event listeners
   document.getElementById('enable-signatures').addEventListener('change', toggleSignatures);
   document.querySelectorAll('input[name="network"]').forEach(radio => {
     radio.addEventListener('change', changeNetwork);
   });
+  document.querySelectorAll('input[name="tx-version"]').forEach(radio => {
+    radio.addEventListener('change', changeTxVersion);
+  });
+  document.getElementById('substitute-preimage')
+    .addEventListener('change', toggleSubstitutePreimage);
 
   // Transaction context event listeners
   document.querySelectorAll('input[name="tx-context-mode"]').forEach(radio => {
@@ -153,12 +202,47 @@ function setupEventHandlers() {
   document.getElementById('btn-apply-tx-context').addEventListener('click', applyTransactionContext);
   document.getElementById('btn-clear-tx-context').addEventListener('click', clearTransactionContext);
 
+  // Preimage computation
+  document.getElementById('btn-compute-preimage').addEventListener('click', computePreimage);
+  document.getElementById('btn-inject-preimage').addEventListener('click', injectPreimageToStack);
+
   // Update stack preview when input changes
   const stackInput = document.getElementById('initial-stack-input');
   stackInput.addEventListener('input', updateStackPreview);
 
   // Initialize empty preview
   updateStackPreview();
+
+  // AI panel event listeners
+  document.getElementById('btn-ai').addEventListener('click', showAI);
+  document.getElementById('btn-close-ai').addEventListener('click', hideAI);
+  document.getElementById('btn-ai-send').addEventListener('click', sendAIMessage);
+  document.getElementById('btn-ai-clear').addEventListener('click', clearAIChat);
+  document.getElementById('ai-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      sendAIMessage();
+    }
+  });
+  document.querySelectorAll('.ai-action-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleAIQuickAction(btn.dataset.action));
+  });
+  document.querySelectorAll('input[name="ai-provider"]').forEach(radio => {
+    radio.addEventListener('change', (e) => { settings.aiProvider = e.target.value; });
+  });
+  document.getElementById('ai-api-key').addEventListener('change', (e) => {
+    settings.aiApiKey = e.target.value.trim();
+  });
+  document.getElementById('ai-model').addEventListener('change', (e) => {
+    settings.aiModel = e.target.value.trim();
+  });
+
+  // Deploy panel event listeners
+  document.getElementById('btn-deploy').addEventListener('click', showDeploy);
+  document.getElementById('btn-close-deploy').addEventListener('click', hideDeploy);
+  document.getElementById('deploy-wif').addEventListener('input', debounce(onDeployWifChange, 500));
+  document.getElementById('btn-refresh-balance').addEventListener('click', refreshDeployBalance);
+  document.getElementById('btn-deploy-execute').addEventListener('click', executeDeployment);
 }
 
 // Clear initial stack input
@@ -172,51 +256,53 @@ function updateStackPreview() {
   const input = document.getElementById('initial-stack-input').value;
   const previewContainer = document.getElementById('stack-preview');
 
-  // Split by whitespace (space, tab, newline) - matching Bitcoin Script syntax
-  const items = input.split(/\s+/)
-    .map(item => item.trim())
-    .filter(item => item.length > 0);
+  const items = splitStackInput(input);
 
   if (items.length === 0) {
-    previewContainer.innerHTML = '<div class="stack-empty">No initial values</div>';
+    replaceWithPlaceholder(previewContainer, 'stack-empty', 'No initial values');
     return;
   }
 
-  // Parse and display stack (reversed to show top to bottom)
-  const reversedItems = [...items].reverse();
-  let html = '';
-
-  reversedItems.forEach((value, index) => {
+  // Parse and display stack (reversed to show top to bottom).
+  previewContainer.textContent = '';
+  [...items].reverse().forEach((value, index) => {
     const actualIndex = items.length - 1 - index;
-    const displayValue = value;
-    const type = isNaN(Number(value)) ? 'string' : 'number';
+    const parsed = parseStackItem(value);
+    const type = parsed.error ? 'invalid' : parsed.type;
 
-    html += `
-      <div class="stack-preview-item">
-        <span class="stack-preview-index">[${actualIndex}]</span>
-        <span class="stack-preview-value">${displayValue}</span>
-        <span class="stack-preview-type">${type}</span>
-      </div>
-    `;
+    previewContainer.appendChild(elementWithSpans('div', 'stack-preview-item', [
+      ['stack-preview-index', `[${actualIndex}]`],
+      ['stack-preview-value', value],
+      ['stack-preview-type', type]
+    ]));
   });
-
-  previewContainer.innerHTML = html;
 }
 
 // Get initial stack values from input
 function getInitialStackValues() {
   const input = document.getElementById('initial-stack-input').value;
+  const values = [];
 
-  // Split by whitespace (space, tab, newline) - matching Bitcoin Script syntax
-  const items = input.split(/\s+/)
-    .map(item => item.trim())
-    .filter(item => item.length > 0);
+  for (const item of splitStackInput(input)) {
+    const parsed = parseStackItem(item);
+    if (parsed.error) {
+      logToConsole(parsed.error, 'error');
+      continue;
+    }
+    values.push(parsed.value);
+  }
 
-  return items.map(item => {
-    // Try to parse as number, otherwise keep as string
-    const num = Number(item);
-    return isNaN(num) ? item : num;
-  });
+  return values;
+}
+
+// In chain mode the stack is derived from the chain state, not the input panel
+async function resolveInitialStack() {
+  if (typeof chainModeActive !== 'undefined' && chainModeActive) {
+    const run = await prepareChainRun();
+    if (run) return run.initialStack;
+    logToConsole('Falling back to the manual initial stack', 'warning');
+  }
+  return getInitialStackValues();
 }
 
 // Run entire script
@@ -234,7 +320,7 @@ async function runScript() {
     hideErrorToast(); // Clear any previous errors
 
     // Get initial stack values
-    const initialStack = getInitialStackValues();
+    const initialStack = await resolveInitialStack();
     if (initialStack.length > 0) {
       logToConsole(`Initial stack: [${initialStack.join(', ')}]`, 'info');
     }
@@ -282,7 +368,7 @@ async function stepScript() {
     }
 
     // Get initial stack values
-    const initialStack = getInitialStackValues();
+    const initialStack = await resolveInitialStack();
     if (initialStack.length > 0) {
       logToConsole(`Initial stack: [${initialStack.join(', ')}]`, 'info');
     }
@@ -294,8 +380,17 @@ async function stepScript() {
 
   if (executionMode === 'stepping') {
     if (interpreter.ip >= interpreter.instructions.length) {
-      logToConsole('Script execution completed', 'success');
-      logToConsole(`Final stack: [${interpreter.mainStack.join(', ')}]`, 'info');
+      // Stepping past the last instruction is where the interpreter applies
+      // the clean-stack and truthiness rules, so let it answer here too
+      try {
+        await interpreter.step();
+        logToConsole('Script execution completed', 'success');
+        logToConsole(`Final stack: [${interpreter.mainStack.join(', ')}]`, 'info');
+      } catch (error) {
+        logToConsole(`Error: ${error.message}`, 'error');
+        showErrorToast(interpreter.error || error.message,
+          interpreter.errorInstruction || 'unknown', interpreter.errorLine);
+      }
       executionMode = 'idle';
       updateUI();
       return;
@@ -345,6 +440,165 @@ function resetScript() {
   logToConsole('Script reset', 'info');
 }
 
+// Switch between script, hex, and asm views
+function switchView(view) {
+  currentView = view;
+
+  // Update toggle button states
+  document.querySelectorAll('.view-toggle-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === view);
+  });
+
+  const editorContainer = document.getElementById('editor-container');
+  const compiledOutput = document.getElementById('compiled-output');
+  const compiledContent = document.getElementById('compiled-output-content');
+
+  if (view === 'script') {
+    editorContainer.style.display = 'block';
+    compiledOutput.style.display = 'none';
+    return;
+  }
+
+  // Compile the current script
+  try {
+    const tempInterpreter = new ScriptInterpreter();
+    const script = editor.getValue();
+    const parsePromise = tempInterpreter.parse(script, [], currentFilePath);
+    parsePromise.then(() => {
+      const instructions = tempInterpreter.instructions;
+      const hex = compileInstructionsToHex(instructions);
+
+      if (view === 'hex') {
+        // Display hex in rows of 32 bytes (64 chars)
+        let formatted = '';
+        for (let i = 0; i < hex.length; i += 64) {
+          const offset = (i / 2).toString(16).padStart(6, '0');
+          formatted += offset + '  ' + hex.slice(i, i + 64) + '\n';
+        }
+        compiledContent.textContent = formatted || '(empty script)';
+      } else if (view === 'asm') {
+        compiledContent.textContent = disassemble(hex) || '(empty script)';
+      }
+
+      editorContainer.style.display = 'none';
+      compiledOutput.style.display = 'block';
+    }).catch(err => {
+      compiledContent.textContent = 'Compilation error: ' + err.message;
+      editorContainer.style.display = 'none';
+      compiledOutput.style.display = 'block';
+    });
+  } catch (err) {
+    compiledContent.textContent = 'Compilation error: ' + err.message;
+    editorContainer.style.display = 'none';
+    compiledOutput.style.display = 'block';
+  }
+}
+
+// Verify script against Rúnar ScriptVM
+async function verifyScript() {
+  const script = editor.getValue();
+  if (!script.trim()) {
+    logToConsole('No script to verify', 'warning');
+    return;
+  }
+
+  try {
+    logToConsole('Verifying script against Rúnar ScriptVM...', 'info');
+
+    // Step 1: Compile, and decide what the comparison can honestly claim
+    const tempInterpreter = new ScriptInterpreter();
+    await tempInterpreter.parse(script, [], currentFilePath);
+    const scriptHex = compileInstructionsToHex(tempInterpreter.instructions);
+
+    let restoreContext = null;
+    const plan = planVerification(scriptHex, {
+      bindingHex: CHECK_PREIMAGE_BINDING_HEX,
+      substitutePreimage: settings.substitutePreimage,
+      enableSignatures: settings.enableSignatures
+    });
+
+    if (!plan.compare) {
+      logToConsole(`Not compared: ${plan.reason}.`, 'warning');
+      return;
+    }
+
+    if (!window.runar || !window.runar.verifyScript) {
+      logToConsole('Rúnar ScriptVM not available. Check that runar-testing is linked.', 'error');
+      return;
+    }
+
+    // Step 2: The ScriptVM runs the binding against a transaction of its own,
+    // so the preimage on the stack has to be that transaction's preimage or
+    // neither engine is checking anything real.
+    const initialStack = getInitialStackValues();
+
+    if (plan.substitutePreimage) {
+      const derived = await window.runar.verifyPreimage(scriptHex);
+      if (!derived.success) {
+        logToConsole(`Could not derive a preimage for this script: ${derived.error}`, 'error');
+        return;
+      }
+
+      if (initialStack.length === 0) {
+        initialStack.push('0x' + derived.preimageHex);
+      } else {
+        initialStack[initialStack.length - 1] = '0x' + derived.preimageHex;
+      }
+
+      // Verify borrows the context; whatever the settings configured goes back
+      restoreContext = { context: interpreter.txContext, mode: interpreter.txContextMode };
+      interpreter.setTransactionContext({ sighash: derived.sighashHex });
+      logToConsole('Substituted a preimage matching the verification transaction, ' +
+        'because the binding rejects any other one in both engines', 'info');
+    }
+
+    // Step 3: Run through our interpreter
+    const localResult = await interpreter.run(script, initialStack);
+    const localStack = [...interpreter.mainStack];
+    const localSuccess = localResult.success;
+
+    // Step 4: Same stack to the ScriptVM, converted the way the interpreter does
+    const initialStackHex = initialStack.map(v => interpreter.toHexString(v));
+    const vmResult = await window.runar.verifyScript(scriptHex, initialStackHex);
+
+    if (vmResult.error && vmResult.error.includes('not available')) {
+      logToConsole('Rúnar ScriptVM not available: ' + vmResult.error, 'error');
+      return;
+    }
+
+    // Step 5: Compare results
+    logToConsole('=== Verification Results ===', 'info');
+    logToConsole(`Local interpreter: ${localSuccess ? 'SUCCESS' : 'FAILED'} | Stack: [${localStack.join(', ')}]`, localSuccess ? 'success' : 'error');
+    logToConsole(`Rúnar ScriptVM:    ${vmResult.success ? 'SUCCESS' : 'FAILED'} | Stack: [${vmResult.stack.join(', ')}]`, vmResult.success ? 'success' : 'error');
+
+    if (vmResult.opsExecuted !== undefined) {
+      logToConsole(`ScriptVM stats: ${vmResult.opsExecuted} ops executed, max stack depth: ${vmResult.maxStackDepth}`, 'info');
+    }
+
+    if (vmResult.vmError) {
+      logToConsole(`ScriptVM error: ${vmResult.vmError}`, 'warning');
+    }
+
+    // Compare success/failure
+    if (localSuccess === vmResult.success) {
+      logToConsole('Result: MATCH - Both interpreters agree', 'success');
+    } else {
+      logToConsole('Result: MISMATCH - Interpreters disagree!', 'error');
+    }
+
+    // Reset interpreter state (verification is non-destructive to UI)
+    interpreter.reset();
+    if (restoreContext) {
+      interpreter.txContext = restoreContext.context;
+      interpreter.txContextMode = restoreContext.mode;
+    }
+    updateUI();
+
+  } catch (error) {
+    logToConsole(`Verification error: ${error.message}`, 'error');
+  }
+}
+
 // Update all UI components
 function updateUI() {
   updateStackDisplay();
@@ -377,7 +631,7 @@ function updateStackDisplay() {
 
       const type = document.createElement('span');
       type.className = 'stack-item-type';
-      type.textContent = typeof value;
+      type.textContent = stackValueType(value);
 
       item.appendChild(index);
       item.appendChild(valueSpan);
@@ -408,7 +662,7 @@ function updateStackDisplay() {
 
       const type = document.createElement('span');
       type.className = 'stack-item-type';
-      type.textContent = typeof value;
+      type.textContent = stackValueType(value);
 
       item.appendChild(index);
       item.appendChild(valueSpan);
@@ -419,6 +673,14 @@ function updateStackDisplay() {
 }
 
 // Format stack values for display
+// A script number is a bigint, which the panel calls a number, and bytes are
+// the 0x-prefixed strings.
+function stackValueType(value) {
+  if (typeof value === 'bigint') return 'number';
+  if (typeof value === 'string' && value.startsWith('0x')) return 'hex';
+  return typeof value;
+}
+
 function formatStackValue(value) {
   if (typeof value === 'string' && value.length > 40) {
     return value.substring(0, 40) + '...';
@@ -675,6 +937,7 @@ function showKeyboardShortcuts() {
     'Cmd/Ctrl+Enter - Execute Script',
     'F10 - Step Through',
     'Cmd/Ctrl+R - Reset Execution',
+    'Cmd/Ctrl+Shift+V - Verify with ScriptVM',
     'Cmd/Ctrl+/ - Show Shortcuts'
   ];
   logToConsole('=== Keyboard Shortcuts ===', 'info');
@@ -744,7 +1007,6 @@ function toggleSignatures(event) {
   if (settings.enableSignatures) {
     logToConsole(`Network set to: ${settings.network}`, 'info');
     logToConsole('Note: checkSig/checkMultiSig require transaction context', 'warning');
-    logToConsole('Note: checkDataSig works without transaction context', 'info');
   }
 }
 
@@ -759,19 +1021,35 @@ function changeNetwork(event) {
   logToConsole(`Network changed to: ${settings.network}`, 'info');
 }
 
+function toggleSubstitutePreimage(event) {
+  settings.substitutePreimage = event.target.checked;
+  logToConsole(settings.substitutePreimage
+    ? 'Verify will substitute a preimage that matches the verification transaction'
+    : 'Verify will skip any script that needs a substituted preimage', 'info');
+}
+
+// Transaction version decides the strict rules, so the interpreter needs it
+function changeTxVersion(event) {
+  settings.txVersion = Number(event.target.value);
+
+  if (interpreter) {
+    interpreter.txVersion = settings.txVersion;
+  }
+
+  logToConsole(`Transaction version set to ${settings.txVersion} ` +
+    `(${settings.txVersion > 1 ? 'relaxed' : 'strict'} rules)`, 'info');
+}
+
 // Transaction context functions
 function toggleTxContextMode(event) {
   const mode = event.target.value;
   const sighashSection = document.getElementById('sighash-input-section');
   const txSection = document.getElementById('transaction-input-section');
+  const preimageSection = document.getElementById('preimage-input-section');
 
-  if (mode === 'sighash') {
-    sighashSection.style.display = 'block';
-    txSection.style.display = 'none';
-  } else {
-    sighashSection.style.display = 'none';
-    txSection.style.display = 'block';
-  }
+  sighashSection.style.display = mode === 'sighash' ? 'block' : 'none';
+  txSection.style.display = mode === 'transaction' ? 'block' : 'none';
+  preimageSection.style.display = mode === 'preimage' ? 'block' : 'none';
 }
 
 function applyTransactionContext() {
@@ -895,12 +1173,22 @@ function showErrorToast(errorMessage, instruction, lineNumber) {
   // Set error message
   messageEl.textContent = errorMessage;
 
-  // Set location info
+  // Set location info. `instruction` is a token out of the script under test,
+  // so build the line rather than interpolating it into markup.
+  locationEl.textContent = '';
+  const strong = (text) => {
+    const el = document.createElement('strong');
+    el.textContent = text;
+    return el;
+  };
   if (lineNumber !== null && lineNumber !== undefined) {
-    locationEl.innerHTML = `At line <strong>${lineNumber + 1}</strong>, instruction: <strong>${instruction}</strong>`;
+    locationEl.appendChild(document.createTextNode('At line '));
+    locationEl.appendChild(strong(String(lineNumber + 1)));
+    locationEl.appendChild(document.createTextNode(', instruction: '));
   } else {
-    locationEl.innerHTML = `Instruction: <strong>${instruction}</strong>`;
+    locationEl.appendChild(document.createTextNode('Instruction: '));
   }
+  locationEl.appendChild(strong(String(instruction)));
 
   // Show toast
   toast.style.display = 'block';
@@ -961,3 +1249,404 @@ style.textContent = `
   }
 `;
 document.head.appendChild(style);
+
+// ---------------------------------------------------------------------------
+// Deploy Panel Functions
+// ---------------------------------------------------------------------------
+
+function showDeploy() {
+  const panel = document.getElementById('deploy-panel');
+  panel.style.display = 'flex';
+  // Update network display from current settings
+  document.getElementById('deploy-network-value').textContent = settings.network;
+}
+
+function hideDeploy() {
+  document.getElementById('deploy-panel').style.display = 'none';
+}
+
+async function onDeployWifChange() {
+  const wif = document.getElementById('deploy-wif').value.trim();
+  const addressDisplay = document.getElementById('deploy-address');
+  const fundingSection = document.getElementById('deploy-funding-section');
+  const actionSection = document.getElementById('deploy-action-section');
+
+  if (!wif || wif.length < 50) {
+    addressDisplay.style.display = 'none';
+    fundingSection.style.display = 'none';
+    actionSection.style.display = 'none';
+    return;
+  }
+
+  try {
+    const result = await window.runar.getAddress(wif);
+    if (result.success) {
+      document.getElementById('deploy-address-value').textContent = result.address;
+      addressDisplay.style.display = 'flex';
+      fundingSection.style.display = 'block';
+      actionSection.style.display = 'block';
+
+      // Auto-fetch balance
+      await refreshDeployBalance();
+    } else {
+      addressDisplay.style.display = 'none';
+      fundingSection.style.display = 'none';
+      actionSection.style.display = 'none';
+      logToConsole('Invalid WIF key: ' + result.error, 'error');
+    }
+  } catch (err) {
+    logToConsole('Error deriving address: ' + err.message, 'error');
+  }
+}
+
+async function refreshDeployBalance() {
+  const address = document.getElementById('deploy-address-value').textContent;
+  if (!address) return;
+
+  document.getElementById('deploy-balance-value').textContent = 'Loading...';
+
+  try {
+    const result = await window.runar.getBalance(address, settings.network);
+    if (result.success) {
+      document.getElementById('deploy-balance-value').textContent =
+        `${result.balance.toLocaleString()} sats (${result.utxoCount} UTXOs)`;
+    } else {
+      document.getElementById('deploy-balance-value').textContent = 'Error: ' + result.error;
+    }
+  } catch (err) {
+    document.getElementById('deploy-balance-value').textContent = 'Error: ' + err.message;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// AI Assistant Panel Functions
+// ---------------------------------------------------------------------------
+
+function showAI() {
+  document.getElementById('ai-panel').style.display = 'flex';
+}
+
+function hideAI() {
+  document.getElementById('ai-panel').style.display = 'none';
+}
+
+function clearAIChat() {
+  aiMessages = [];
+  const container = document.getElementById('ai-messages');
+  container.textContent = '';
+
+  const message = document.createElement('div');
+  message.className = 'ai-message ai-message-assistant';
+  const content = document.createElement('div');
+  content.className = 'ai-message-content';
+  content.textContent = 'I can help you write, explain, and fix Bitcoin Scripts. ' +
+    'Ask me anything or use the quick actions above.';
+  message.appendChild(content);
+  container.appendChild(message);
+}
+
+function handleAIQuickAction(action) {
+  const script = editor.getValue().trim();
+  let prompt;
+
+  switch (action) {
+    case 'explain':
+      if (!script) {
+        appendAIMessage('assistant', 'There is no script in the editor to explain. Write or load a script first.');
+        return;
+      }
+      prompt = 'Explain what this script does step by step, showing how the stack changes at each instruction.';
+      break;
+    case 'fix':
+      if (!script) {
+        appendAIMessage('assistant', 'There is no script in the editor to fix. Write or load a script first.');
+        return;
+      }
+      prompt = 'Check this script for errors or issues and provide a corrected version if needed.';
+      break;
+    case 'optimize':
+      if (!script) {
+        appendAIMessage('assistant', 'There is no script in the editor to optimize. Write or load a script first.');
+        return;
+      }
+      prompt = 'Suggest optimizations to make this script more efficient (fewer opcodes, less stack manipulation).';
+      break;
+    default:
+      return;
+  }
+
+  // Set the prompt in the input and send
+  document.getElementById('ai-input').value = prompt;
+  sendAIMessage();
+}
+
+async function sendAIMessage() {
+  if (aiLoading) return;
+
+  const input = document.getElementById('ai-input');
+  const userText = input.value.trim();
+  if (!userText) return;
+
+  // Clear input
+  input.value = '';
+
+  // Add user message to UI
+  appendAIMessage('user', userText);
+
+  // Add to conversation history
+  aiMessages.push({ role: 'user', content: userText });
+
+  // Show loading
+  aiLoading = true;
+  const sendBtn = document.getElementById('btn-ai-send');
+  sendBtn.disabled = true;
+  sendBtn.textContent = '...';
+  const loadingEl = appendAIMessage('assistant', 'Thinking...', true);
+
+  try {
+    const result = await window.ai.chat({
+      provider: settings.aiProvider,
+      apiKey: settings.aiApiKey,
+      model: settings.aiModel || undefined,
+      messages: aiMessages,
+      editorContent: editor.getValue()
+    });
+
+    // Remove loading message
+    loadingEl.remove();
+
+    if (result.success) {
+      aiMessages.push({ role: 'assistant', content: result.reply });
+      appendAIMessage('assistant', result.reply);
+    } else {
+      appendAIMessage('assistant', 'Error: ' + result.error);
+    }
+  } catch (err) {
+    loadingEl.remove();
+    appendAIMessage('assistant', 'Error: ' + err.message);
+  } finally {
+    aiLoading = false;
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'Send';
+  }
+}
+
+function appendAIMessage(role, content, isLoading) {
+  const container = document.getElementById('ai-messages');
+  const msgEl = document.createElement('div');
+  msgEl.className = `ai-message ai-message-${role}`;
+  if (isLoading) msgEl.classList.add('ai-message-loading');
+
+  const contentEl = document.createElement('div');
+  contentEl.className = 'ai-message-content';
+
+  if (role === 'assistant' && !isLoading) {
+    contentEl.innerHTML = renderAIMarkdown(content);
+    // Add "Insert to Editor" buttons for code blocks
+    contentEl.querySelectorAll('pre code').forEach(codeEl => {
+      const btn = document.createElement('button');
+      btn.className = 'ai-insert-btn';
+      btn.textContent = 'Insert to Editor';
+      btn.addEventListener('click', () => {
+        editor.setValue(codeEl.textContent);
+        logToConsole('Script inserted from AI assistant', 'info');
+      });
+      codeEl.parentElement.appendChild(btn);
+    });
+  } else {
+    contentEl.textContent = content;
+  }
+
+  msgEl.appendChild(contentEl);
+  container.appendChild(msgEl);
+  container.scrollTop = container.scrollHeight;
+  return msgEl;
+}
+
+function renderAIMarkdown(text) {
+  // Escape the whole reply first, then add the formatting tags. Escaping only
+  // the code spans left every other part of the reply able to inject markup.
+  let html = escapeHtml(text);
+
+  // Code blocks (```...```)
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => `<pre><code>${code}</code></pre>`);
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, (_, code) => `<code>${code}</code>`);
+
+  // Bold
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+  // Italic
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+  // Line breaks -> paragraphs
+  html = html.split('\n\n').map(para => {
+    if (para.match(/^<(pre|ul|ol|h[1-3])/)) return para;
+    return `<p>${para.replace(/\n/g, '<br>')}</p>`;
+  }).join('');
+
+  return html;
+}
+
+// ---------------------------------------------------------------------------
+// Deploy Panel Functions (continued)
+// ---------------------------------------------------------------------------
+
+async function executeDeployment() {
+  const wif = document.getElementById('deploy-wif').value.trim();
+  const satoshis = parseInt(document.getElementById('deploy-satoshis').value);
+  const statusEl = document.getElementById('deploy-status');
+  const resultEl = document.getElementById('deploy-result');
+
+  if (!wif) {
+    statusEl.textContent = 'WIF key is required';
+    statusEl.className = 'settings-status visible error';
+    return;
+  }
+
+  if (isNaN(satoshis) || satoshis < 1) {
+    statusEl.textContent = 'Minimum 1 satoshi';
+    statusEl.className = 'settings-status visible error';
+    return;
+  }
+
+  // Compile current script to hex
+  try {
+    statusEl.textContent = 'Compiling script...';
+    statusEl.className = 'settings-status visible';
+
+    const script = editor.getValue();
+    const tempInterpreter = new ScriptInterpreter();
+    await tempInterpreter.parse(script, [], currentFilePath);
+    const scriptHex = compileInstructionsToHex(tempInterpreter.instructions);
+
+    statusEl.textContent = 'Deploying to ' + settings.network + '...';
+
+    const result = await window.runar.deployScript({
+      wif,
+      scriptHex,
+      satoshis,
+      network: settings.network
+    });
+
+    if (result.success) {
+      statusEl.textContent = 'Deployed successfully!';
+      statusEl.className = 'settings-status visible success';
+
+      document.getElementById('deploy-txid').value = result.txid;
+      resultEl.style.display = 'block';
+
+      // Show explorer link
+      const baseUrl = settings.network === 'testnet'
+        ? 'https://test.whatsonchain.com/tx/'
+        : 'https://whatsonchain.com/tx/';
+      const link = document.getElementById('deploy-explorer-link');
+      link.href = baseUrl + result.txid;
+      link.style.display = 'inline-block';
+
+      logToConsole(`Script deployed! TxID: ${result.txid}`, 'success');
+
+      // Refresh balance
+      await refreshDeployBalance();
+    } else {
+      statusEl.textContent = 'Deployment failed: ' + result.error;
+      statusEl.className = 'settings-status visible error';
+      logToConsole('Deployment failed: ' + result.error, 'error');
+    }
+  } catch (err) {
+    statusEl.textContent = 'Error: ' + err.message;
+    statusEl.className = 'settings-status visible error';
+    logToConsole('Deployment error: ' + err.message, 'error');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Preimage (OP_PUSH_TX) Functions
+// ---------------------------------------------------------------------------
+
+async function computePreimage() {
+  const statusEl = document.getElementById('preimage-status');
+  const resultsEl = document.getElementById('preimage-results');
+  const injectBtn = document.getElementById('btn-inject-preimage');
+
+  const txHex = document.getElementById('preimage-tx-hex').value.trim();
+  const inputIndex = parseInt(document.getElementById('preimage-input-index').value);
+  const lockingScriptHex = document.getElementById('preimage-locking-script').value.trim();
+  const satoshis = parseInt(document.getElementById('preimage-satoshis').value);
+
+  if (!txHex) {
+    statusEl.textContent = 'Spending transaction hex is required';
+    statusEl.className = 'settings-status visible error';
+    return;
+  }
+  if (!lockingScriptHex) {
+    statusEl.textContent = 'Locking script hex is required';
+    statusEl.className = 'settings-status visible error';
+    return;
+  }
+  if (isNaN(satoshis) || satoshis <= 0) {
+    statusEl.textContent = 'Valid satoshi amount is required';
+    statusEl.className = 'settings-status visible error';
+    return;
+  }
+
+  statusEl.textContent = 'Computing preimage...';
+  statusEl.className = 'settings-status visible';
+
+  try {
+    // Find OP_CODESEPARATOR offset in the locking script (byte 0xab)
+    let codeSeparatorIndex;
+    for (let i = 0; i < lockingScriptHex.length; i += 2) {
+      if (lockingScriptHex.substr(i, 2) === 'ab') {
+        codeSeparatorIndex = i / 2;
+      }
+    }
+
+    const result = await window.runar.computePreimage({
+      txHex,
+      inputIndex,
+      lockingScriptHex,
+      satoshis,
+      codeSeparatorIndex
+    });
+
+    if (result.success) {
+      document.getElementById('preimage-sig-output').value = result.sigHex;
+      document.getElementById('preimage-hex-output').value = result.preimageHex;
+      resultsEl.style.display = 'block';
+      injectBtn.style.display = 'inline-block';
+      statusEl.textContent = 'Preimage computed successfully';
+      statusEl.className = 'settings-status visible success';
+      logToConsole('OP_PUSH_TX preimage computed. Signature: ' + result.sigHex.substring(0, 20) + '...', 'success');
+    } else {
+      statusEl.textContent = 'Error: ' + result.error;
+      statusEl.className = 'settings-status visible error';
+      logToConsole('Preimage computation failed: ' + result.error, 'error');
+    }
+  } catch (err) {
+    statusEl.textContent = 'Error: ' + err.message;
+    statusEl.className = 'settings-status visible error';
+    logToConsole('Preimage computation error: ' + err.message, 'error');
+  }
+}
+
+function injectPreimageToStack() {
+  const sigHex = document.getElementById('preimage-sig-output').value;
+  const preimageHex = document.getElementById('preimage-hex-output').value;
+
+  if (!sigHex || !preimageHex) {
+    logToConsole('No preimage data to inject. Compute preimage first.', 'warning');
+    return;
+  }
+
+  // Set the initial stack input: signature at bottom, preimage on top
+  const stackInput = document.getElementById('initial-stack-input');
+  stackInput.value = '0x' + sigHex + ' 0x' + preimageHex;
+  updateStackPreview();
+
+  logToConsole('Injected OP_PUSH_TX signature and preimage to initial stack', 'success');
+
+  // Close the settings panel for convenience
+  hideSettings();
+}

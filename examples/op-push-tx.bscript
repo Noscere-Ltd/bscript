@@ -1,0 +1,81 @@
+// OP_PUSH_TX: Extract All Transaction Fields
+//
+// Demonstrates every preimage extraction macro available.
+// Each macro expands to real Bitcoin Script opcodes at parse time.
+// Toggle "ASM" view to see the compiled output.
+//
+// Initial stack (bottom to top):
+//   <preimage>        BIP-143 sighash preimage
+//
+// checkPreimage consumes nothing and leaves the preimage where it found it,
+// ready for the extractors.
+//
+// In simulated mode (default), the extractors slice real byte offsets, so the
+// item must be a full-length dummy preimage:
+//   0x0200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001ab00000000000000000000000000000000aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd0000000041000000
+//
+// How OP_PUSH_TX works:
+//   checkPreimage compiles to a fixed 428-byte run that derives an ECDSA
+//   signature over hash256(preimage) in script and checks it with
+//   OP_CHECKSIGVERIFY against a fixed public key. The node only accepts the
+//   spend if the preimage on the stack is the one it is signing, so no
+//   signature comes from the spender and a forged preimage cannot pass.
+//   Once verified, extractors slice the preimage at known offsets.
+
+// --- Verify preimage authenticity ---
+checkPreimage
+
+// --- BIP-143 Preimage Fields ---
+// Each extractor consumes the preimage, so dup before each one.
+
+// nVersion: transaction version number (4 bytes → number)
+// Offset: bytes 0-3
+dup extractVersion
+drop
+
+// hashPrevouts: hash of all input outpoints (32 bytes)
+// Offset: bytes 4-35
+dup extractHashPrevouts
+drop
+
+// hashSequence: hash of all input nSequence values (32 bytes)
+// Offset: bytes 36-67
+dup extractHashSequence
+drop
+
+// outpoint: txid + vout of the input being spent (36 bytes)
+// Offset: bytes 68-103
+dup extractOutpoint
+drop
+
+// inputIndex: which input is being signed (4 bytes → number)
+// Offset: bytes 100-103
+dup extractInputIndex
+drop
+
+// amount: satoshis in the UTXO being spent (8 bytes → number)
+// Offset: size-52 to size-44
+dup extractAmount
+drop
+
+// nSequence: this input's sequence number (4 bytes → number)
+// Offset: size-44 to size-40
+dup extractSequence
+drop
+
+// hashOutputs: hash256 of all outputs (32 bytes)
+// Offset: size-40 to size-8
+dup extractOutputHash
+drop
+
+// nLocktime: transaction locktime (4 bytes → number)
+// Offset: size-8 to size-4
+dup extractLocktime
+drop
+
+// sighashType: signature hash flags (4 bytes → number)
+// Usually 0x41 = SIGHASH_ALL | SIGHASH_FORKID
+extractSigHashType
+drop
+
+true

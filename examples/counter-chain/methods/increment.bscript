@@ -1,0 +1,4 @@
+// Increment method - Unlocking Script
+// The chain engine auto-injects [preimage] onto the stack.
+// This unlock script runs before the locking script.
+// No additional operations needed for a simple counter.

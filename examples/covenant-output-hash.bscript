@@ -1,0 +1,36 @@
+// Covenant Example: Enforced Output Destination
+//
+// This contract requires that the spending transaction's outputs hash
+// to a specific value. This is how covenants restrict WHERE funds can go.
+//
+// The pattern:
+//   1. Verify preimage (OP_PUSH_TX)
+//   2. Extract hashOutputs from preimage
+//   3. Compare against the expected hash baked into the script
+//
+// Initial stack (bottom to top):
+//   <preimage>
+//
+// Try it in simulated mode with dummy data to see the extraction work.
+// Set initial stack to:
+//   0x0200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001ab00000000000000000000000000000000aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd0000000041000000
+
+// Step 1: Verify the preimage
+checkPreimage
+
+// Step 2: Extract hashOutputs (32 bytes)
+dup
+extractOutputHash
+
+// Step 3: Compare with expected output hash
+// (In a real contract, this would be a constructor parameter)
+// For this example, we check against the hash baked into the dummy preimage
+0xaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd
+equal
+verify
+
+// Step 4: Extract version to show multiple extractions work
+extractVersion
+
+// Version should be 2
+2 numEqual

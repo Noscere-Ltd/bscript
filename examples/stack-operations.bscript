@@ -1,4 +1,9 @@
 // Bitcoin Script Example: Stack Manipulation
+//
+// Transaction version: 2
+// It keeps every intermediate value on the stack to show the steps, and
+// version 1 requires exactly one item at the end.
+//
 // Demonstrates stack operation opcodes
 
 // Push some values

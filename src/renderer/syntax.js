@@ -22,10 +22,10 @@ const bitcoinScriptLanguageDef = {
 
     // Arithmetic
     'add', 'sub', 'mul', 'div', 'mod', 'negate', 'abs', 'not',
-    '0notEqual', '1add', '1sub', 'min', 'max', 'within',
+    '0notEqual', '1add', '1sub', '2mul', '2div', 'min', 'max', 'within',
 
     // Bitwise logic
-    'and', 'or', 'xor', 'invert', 'lShift', 'rShift',
+    'and', 'or', 'xor', 'invert', 'lShift', 'rShift', 'lShiftNum', 'rShiftNum',
 
     // Comparison
     'equal', 'equalVerify', 'lessThan', 'greaterThan',
@@ -33,19 +33,23 @@ const bitcoinScriptLanguageDef = {
     'numEqual', 'numEqualVerify', 'numNotEqual',
 
     // String operations (BSV)
-    'cat', 'split', 'num2bin', 'bin2num', 'size',
+    'cat', 'split', 'num2bin', 'bin2num', 'size', 'substr', 'left', 'right',
 
     // Crypto
     'ripemd160', 'sha1', 'sha256', 'hash160', 'hash256',
     'checkSig', 'checkSigVerify', 'checkMultiSig', 'checkMultiSigVerify',
-    'checkDataSig', 'checkDataSigVerify',
 
     // Additional opcodes
-    'codeseparator', 'reserved', 'ver', 'verif', 'vernotif',
+    'codeseparator', 'reserved', 'ver', 'verIf', 'verNotIf',
     'reserved1', 'reserved2',
 
     // Macros
     'hashCat', 'LOOP',
+    'checkPreimage', 'codeSeparator',
+    'extractVersion', 'extractHashPrevouts', 'extractHashSequence',
+    'extractOutpoint', 'extractInputIndex',
+    'extractAmount', 'extractSequence', 'extractOutputHash',
+    'extractLocktime', 'extractSigHashType',
 
     // Import system
     'import', 'from',

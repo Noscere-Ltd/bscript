@@ -1,0 +1,23 @@
+{
+  "name": "Counter",
+  "contract": "./counter.bscript",
+  "stateFields": [
+    { "name": "count", "type": "int" }
+  ],
+  "methods": [
+    {
+      "name": "increment",
+      "unlock": "./methods/increment.bscript",
+      "params": []
+    },
+    {
+      "name": "decrement",
+      "unlock": "./methods/decrement.bscript",
+      "params": []
+    }
+  ],
+  "initialState": {
+    "count": 0
+  },
+  "satoshis": 10000
+}

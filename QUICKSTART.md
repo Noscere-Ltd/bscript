@@ -1,174 +1,176 @@
 # SVSCRIPT Quick Start Guide
 
-Get started with SVSCRIPT in under 5 minutes!
-
-## Installation & Running
+## Install and run
 
 ```bash
-# Navigate to project directory
-cd /Users/craig/noscere/bsvapps/svscript
-
-# Install dependencies (first time only)
 npm install
-
-# Start the application
 npm start
 ```
 
-## First Script
+Verify, Deploy and preimage computation also need the Rúnar packages linked
+into `node_modules`. See the Rúnar section of `readme.md`. Everything in this
+guide works without them.
 
-When SVSCRIPT opens, you'll see a default example script. Try running it:
+## First script
 
-1. Press **Ctrl/Cmd + Enter** to run the entire script
-2. Watch the stack visualization update in real-time
-3. Check the console output for results
+SVSCRIPT opens on a default script. Press **Cmd/Ctrl + Enter** to run it, watch
+the stack panel fill, and read the result in the console.
 
-## Step-by-Step Debugging
+## The end-of-script rules
 
-Let's debug a simple script step by step:
+A script does not only have to run, it has to end in a valid state. At the
+default **transaction version 1** that means:
 
-1. Clear the editor and enter this script:
+- the stack is not empty
+- the top item is true
+- exactly one item is left (the clean stack rule)
+
+Set the version to 2 in Settings to relax all three, which is what the teaching
+examples below do when they leave several values on the stack.
+
+## Step-by-step debugging
+
+Enter this script:
+
 ```
 10 20 add
 dup
 5 mul
 ```
 
-2. Press **F10** to enter step mode
-3. Press **F10** again to execute each instruction:
-   - First F10: Pushes 10 → Stack: [10]
-   - Second F10: Pushes 20 → Stack: [10, 20]
-   - Third F10: Executes add → Stack: [30]
-   - Fourth F10: Executes dup → Stack: [30, 30]
-   - Fifth F10: Pushes 5 → Stack: [30, 30, 5]
-   - Sixth F10: Executes mul → Stack: [30, 150]
+Press **F10** repeatedly:
 
-4. Watch the stack visualization update with each step!
+| Press | Instruction | Stack |
+|---|---|---|
+| 1 | `10` | `[10]` |
+| 2 | `20` | `[10, 20]` |
+| 3 | `add` | `[30]` |
+| 4 | `dup` | `[30, 30]` |
+| 5 | `5` | `[30, 30, 5]` |
+| 6 | `mul` | `[30, 150]` |
 
-## Understanding the Interface
+Two items are left, so this one needs transaction version 2. At version 1 the
+last step reports a clean-stack failure, which is the rule a node would apply.
 
-### Editor Panel (Left)
-- Write your Bitcoin Script code here
-- Syntax highlighting for all opcodes
-- Current line highlighted during execution
+## The interface
 
-### Debugger Panel (Right)
-- **Main Stack**: Shows current stack state (top to bottom)
-- **Alternate Stack**: Shows values moved with toAltStack
-- **Execution History**: Log of executed opcodes
-- **State**: Instruction pointer and execution counters
+### Initial stack (left)
+Values pushed before the script runs, space separated, bottom to top. Each item
+is either a decimal number or a `0x` hex literal. Anything else is dropped with
+a message.
 
-### Console (Bottom)
-- Execution results
-- Error messages
-- Status updates
+### Editor (centre)
+Syntax highlighting, completion, and a glyph marking the current instruction.
 
-## Try These Examples
+### Debugger (right)
+Main stack, alternate stack, execution history, and the instruction pointer.
 
-### Example 1: Basic Arithmetic
+### Console (bottom)
+Results, errors and status.
+
+## Try these
+
+### Arithmetic
+
 ```
-// Calculate (10 + 5) * 3
+// (10 + 5) * 3 = 45
 10 5 add
 3 mul
-// Expected result: 45
 ```
 
-### Example 2: Stack Operations
+### Stack operations
+
 ```
-// Demonstrate dup and swap
 100
-dup     // Stack: [100, 100]
-200     // Stack: [100, 100, 200]
-swap    // Stack: [100, 200, 100]
-add     // Stack: [100, 300]
+dup     // [100, 100]
+200     // [100, 100, 200]
+swap    // [100, 200, 100]
+add     // [100, 300]
 ```
 
-### Example 3: Conditionals
+### Conditionals
+
 ```
-// Check if number is positive
 -5
 dup 0 greaterThan
 
 if
-  abs   // Make positive if negative (won't execute)
+  abs   // not taken
 else
-  abs   // This executes
+  abs   // taken
 endIf
 
-// Result: 5
+// [5]
 ```
 
-### Example 4: Alternate Stack
+### Alternate stack
+
 ```
-// Use alt stack for temporary storage
 1 2 3
-toAltStack      // Move 3 to alt stack
-add             // Add 1 + 2 = 3
-fromAltStack    // Bring back 3
+toAltStack      // move 3 aside
+add             // 1 + 2 = 3
+fromAltStack    // bring 3 back
 mul             // 3 * 3 = 9
 ```
 
-## Keyboard Shortcuts
+### A hash puzzle
 
-| Shortcut | Action |
-|----------|--------|
-| Ctrl/Cmd + Enter | Run entire script |
-| F10 | Step through execution |
-| - | - |
+Put `42` in the initial stack and run:
 
-## Load Example Scripts
-
-Example scripts are in the `examples/` folder:
-
-- `arithmetic.bscript` - Arithmetic operations
-- `stack-operations.bscript` - Stack manipulation
-- `conditionals.bscript` - IF/ELSE/ENDIF
-- `alt-stack.bscript` - Alternate stack usage
-- `bitwise.bscript` - Bitwise operations
-
-Copy the content from any example into the editor to try them out!
-
-## Common Pitfalls
-
-### Stack Underflow
 ```
-// ERROR: Not enough items on stack
-add  // Needs 2 items, stack is empty
+sha256
+0x684888c0ebb17f374298b65ee2807526c066094c701bcc7ebbe1c1095f494fc1
+equal
 ```
 
-### Division by Zero
+One item, true, so this passes at version 1.
+
+## Cross-check with a second engine
+
+Press **Cmd/Ctrl + Shift + V** to run the same script through Rúnar's
+`ScriptVM` and compare the two results. The console reports `MATCH`, a
+mismatch, or the reason the two engines cannot be compared.
+
+## Load an example
+
+`File > Open` starts in `examples/`:
+
+| File | What it shows |
+|---|---|
+| `arithmetic.bscript` | Arithmetic opcodes |
+| `stack-operations.bscript` | Stack manipulation |
+| `conditionals.bscript` | IF/ELSE/ENDIF |
+| `alt-stack.bscript` | Alternate stack |
+| `bitwise.bscript` | Bitwise opcodes |
+| `hash-puzzle.bscript` | Proof of knowledge of a preimage |
+| `p2pkh-checksig.bscript` | Pay to public key hash |
+| `multisig-2of3.bscript` | 2-of-3 multisig |
+| `macros.bscript` | Built-in macros |
+| `import-example.bscript` | Wildcard imports |
+| `named-import-example.bscript` | Named imports |
+| `op-push-tx.bscript` | `checkPreimage` and the preimage fields |
+| `covenant-locktime.bscript` | A covenant on nLocktime |
+| `covenant-output-hash.bscript` | A covenant on the outputs |
+| `covenant-rate-limit.bscript` | An owner signature plus a covenant |
+| `counter-chain/` | A stateful contract for chain mode |
+
+Scripts that need transaction version 2 say so in a comment at the top.
+
+## Common mistakes
+
 ```
-// ERROR: Division by zero
-10 0 div
+add          // stack underflow: add needs two items
+10 0 div     // division by zero
+10 5 sub     // 5, not -5: the second item is subtracted from the first
 ```
 
-### Wrong Order
-```
-// Remember: Stack is LIFO (Last In, First Out)
-10 5 sub  // Result: 5 (not -5)
-// Because: 10 - 5 = 5
-```
+At version 1 two more failures are common: a push that is not minimally
+encoded, and more than one item left at the end.
 
-## Next Steps
+## Next steps
 
-1. Read the full [README.md](README.md) for detailed documentation
-2. Check [claude.md](claude.md) for complete opcode reference
-3. Experiment with different opcodes
-4. Try creating your own scripts!
-
-## Need Help?
-
-- **Opcode Reference**: See [claude.md](claude.md)
-- **Full Documentation**: See [README.md](README.md)
-- **Stack Behavior**: Watch the stack visualization as you step through
-- **Errors**: Check console output for detailed error messages
-
-## Tips for Learning
-
-1. **Start Simple**: Begin with basic arithmetic before complex scripts
-2. **Use Step Mode**: F10 stepping helps understand execution flow
-3. **Watch the Stack**: Keep an eye on stack changes
-4. **Read History**: Execution history shows what each opcode did
-5. **Experiment**: Try modifying examples to see what happens!
-
-Happy Scripting!
+- `user-guide.md` for the full guide: transaction versions, signatures, Verify,
+  covenants, chain mode and deployment
+- `readme.md` for the opcode list and feature reference
+- The in-app help panel for macros, imports and opcode descriptions
+- `development.md` to extend the app

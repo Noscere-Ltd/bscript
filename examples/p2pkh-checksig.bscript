@@ -1,0 +1,39 @@
+// Classic P2PKH (Pay-to-Public-Key-Hash)
+//
+// This is the most common Bitcoin script pattern.
+// The locking script checks that the spender provides:
+//   1. A public key that hashes to the expected address
+//   2. A valid signature from that key
+//
+// Initial stack (bottom to top):
+//   <signature>
+//   <pubkey>
+//
+// In simulated mode, set initial stack to any two values:
+//   0xdeadbeef 0xcafebabe
+//
+// The script flow:
+//   [sig pubkey] → dup → [sig pubkey pubkey]
+//                → hash160 → [sig pubkey hash]
+//                → <expected_hash> → [sig pubkey hash expected]
+//                → equalVerify → [sig pubkey]
+//                → checkSig → [result]
+//
+// Toggle "Hex" view to see the compiled output matches the
+// standard P2PKH template: 76 a9 14 <20-byte-hash> 88 ac
+
+// Duplicate the public key for hashing
+dup
+
+// Hash the public key: RIPEMD160(SHA256(pubkey))
+hash160
+
+// Push the expected pubkey hash (20 bytes / 40 hex chars)
+// Replace with your actual address hash
+0x89abcdefabbaabbaabbaabbaabbaabbaabbaabba
+
+// Verify the hashes match (fails if not equal)
+equalVerify
+
+// Verify the signature against the public key
+checkSig

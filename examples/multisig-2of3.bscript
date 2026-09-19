@@ -1,0 +1,30 @@
+// Multi-Signature: 2-of-3
+//
+// Requires any 2 out of 3 designated public keys to sign.
+// Common pattern for escrow, shared wallets, corporate accounts.
+//
+// Initial stack (bottom to top):
+//   0              (dummy element - Bitcoin protocol quirk)
+//   <sig1>
+//   <sig2>
+//
+// In simulated mode, set initial stack to:
+//   0 0xaa 0xbb
+//
+// Toggle "ASM" view to see:
+//   OP_0 <sig1> <sig2> OP_2 <pk1> <pk2> <pk3> OP_3 OP_CHECKMULTISIG
+
+// Number of required signatures
+2
+
+// Push the three public keys (compressed, 33 bytes each)
+// Replace with real public keys for production use
+0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+0x02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5
+0x02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+
+// Total number of public keys
+3
+
+// Check that 2 of 3 signatures are valid
+checkMultiSig

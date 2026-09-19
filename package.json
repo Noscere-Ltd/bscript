@@ -5,7 +5,8 @@
   "main": "src/main/main.js",
   "scripts": {
     "start": "unset ELECTRON_RUN_AS_NODE && electron .",
-    "dev": "unset ELECTRON_RUN_AS_NODE && electron . --dev"
+    "dev": "unset ELECTRON_RUN_AS_NODE && electron . --dev",
+    "test": "node --test test/*.test.js"
   },
   "keywords": [
     "bitcoin",

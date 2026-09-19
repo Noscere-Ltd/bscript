@@ -375,9 +375,9 @@ class ScriptInterpreter {
   }
 
   // Execute entire script
-  async run(scriptText, initialStack = []) {
+  async run(scriptText, initialStack = [], currentFilePath = null) {
     try {
-      await this.parse(scriptText, initialStack);
+      await this.parse(scriptText, initialStack, currentFilePath);
       this.status = 'running';
 
       while (this.ip < this.instructions.length) {

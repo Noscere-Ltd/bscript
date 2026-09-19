@@ -327,7 +327,7 @@ async function runChainTransition() {
   if (!run) return;
 
   logToConsole('Executing contract...', 'info');
-  var result = await interpreter.run(editor.getValue(), run.initialStack);
+  var result = await interpreter.run(editor.getValue(), run.initialStack, currentFilePath);
 
   if (result.success) {
     logToConsole('Transition succeeded!', 'success');

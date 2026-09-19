@@ -325,7 +325,7 @@ async function runScript() {
       logToConsole(`Initial stack: [${initialStack.join(', ')}]`, 'info');
     }
 
-    const result = await interpreter.run(script, initialStack);
+    const result = await interpreter.run(script, initialStack, currentFilePath);
 
     if (result.success) {
       logToConsole('Script executed successfully', 'success');
@@ -553,7 +553,7 @@ async function verifyScript() {
     }
 
     // Step 3: Run through our interpreter
-    const localResult = await interpreter.run(script, initialStack);
+    const localResult = await interpreter.run(script, initialStack, currentFilePath);
     const localStack = [...interpreter.mainStack];
     const localSuccess = localResult.success;
 

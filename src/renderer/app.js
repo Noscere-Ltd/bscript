@@ -523,7 +523,7 @@ async function verifyScript() {
     }
 
     if (!window.runar || !window.runar.verifyScript) {
-      logToConsole('Rúnar ScriptVM not available. Check that runar-testing is linked.', 'error');
+      logToConsole('Rúnar ScriptVM not available: the preload bridge is missing.', 'error');
       return;
     }
 

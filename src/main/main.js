@@ -319,7 +319,7 @@ ipcMain.handle('bsv-compute-sighash', async (event, { txHex, inputIndex, prevScr
 let _runarTesting = null;
 async function getRunarTesting() {
   if (!_runarTesting) {
-    _runarTesting = await import('runar-testing');
+    _runarTesting = await import('../vendor/runar/vm/index.js');
   }
   return _runarTesting;
 }
@@ -327,7 +327,7 @@ async function getRunarTesting() {
 let _runarSdk = null;
 async function getRunarSdk() {
   if (!_runarSdk) {
-    _runarSdk = await import('runar-sdk');
+    _runarSdk = await import('../vendor/runar/sdk/index.js');
   }
   return _runarSdk;
 }

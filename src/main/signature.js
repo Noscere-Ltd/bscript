@@ -4,8 +4,24 @@
 // message it covers: bit 0x20 selects the original transaction digest
 // algorithm, 0x40 without it selects BIP-143. The scope therefore comes from
 // the signature itself, never from a guess about the byte's range.
+//
+// Bit 0x20 is also gated: it is only valid after Chronicle, which @bsv/sdk
+// reads from the transaction version, the same switch version 1 already uses
+// for the rest of the strict rules.
 
 const { PublicKey, TransactionSignature, Transaction, Script, Hash, BigNumber, ECDSA } = require('@bsv/sdk');
+
+const SIGHASH_CHRONICLE = TransactionSignature.SIGHASH_CHRONICLE; // 0x20
+
+// @bsv/sdk rejects the Chronicle scope on a spend that predates activation, and
+// with no explicit verify flags it reads version > 1 as activated. Checking the
+// same thing here keeps the app from calling a signature valid that Spend, and
+// so a node, would refuse. Without a transaction there is no version to judge
+// by, so nothing is rejected.
+function isChronicleBeforeActivation(scope, txContext) {
+  if ((scope & SIGHASH_CHRONICLE) === 0 || !txContext) return false;
+  return Transaction.fromHex(txContext.txHex).version <= 1;
+}
 
 // The sighash is already the message hash, so it is verified as it stands.
 // Signature.verify would sha256 it again and check the wrong message.
@@ -49,6 +65,10 @@ function verifySig({ signatureHex, pubKeyHex, sighashHex, txContext, requireLowS
       return { success: false, error: 'The signature must have a low S value.' };
     }
 
+    if (!sighashHex && isChronicleBeforeActivation(signature.scope, txContext)) {
+      return { success: false, error: 'The signature hash type is invalid before Chronicle.' };
+    }
+
     const sighash = sighashHex || sighashFor(txContext, signature.scope);
     const pubKey = PublicKey.fromString(pubKeyHex);
 
@@ -80,6 +100,10 @@ function verifyMultiSig({ signaturesHex, pubKeysHex, sighashHex, txContext, requ
     let validCount = 0;
 
     for (const sig of signatures) {
+      if (!sighashHex && isChronicleBeforeActivation(sig.scope, txContext)) {
+        return { success: false, error: 'The signature hash type is invalid before Chronicle.' };
+      }
+
       const sighash = sighashHex || sighashFor(txContext, sig.scope);
 
       while (pubKeyIndex < pubKeys.length) {

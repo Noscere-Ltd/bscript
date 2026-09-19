@@ -7,9 +7,8 @@ npm install
 npm start
 ```
 
-Verify, Deploy and preimage computation also need the Rúnar packages linked
-into `node_modules`. See the Rúnar section of `readme.md`. Everything in this
-guide works without them.
+That is the whole setup. The Rúnar code behind Verify, Deploy and preimage
+computation is vendored under `src/vendor/runar`, so there is nothing to link.
 
 ## First script
 

@@ -21,6 +21,6 @@
     "electron": "^44.0.0"
   },
   "dependencies": {
-    "@bsv/sdk": "^2.1.6"
+    "@bsv/sdk": "2.7.1"
   }
 }

@@ -16,7 +16,7 @@ Script, with visual stack inspection. Built with Electron and Monaco Editor.
 - **Execution history**: every executed opcode with a description of what it did
 - **87 opcodes**, including the BSV restored set (`cat`, `split`, `mul`, `div`, `mod`, `and`, `or`, `xor`, `invert`, `lShift`, `rShift`, `substr`, `left`, `right`, `2mul`, `2div`)
 - **Real hashing**: SHA-256, SHA-1, RIPEMD-160, HASH256, HASH160 through `@bsv/sdk`
-- **Transaction version rules**: version 1 applies the strict consensus rules (minimal pushes, minimal number encoding, low-S signatures, NULLDUMMY, clean stack); version 2 and above relax all of them
+- **Transaction version rules**: version 1 applies the strict consensus rules (minimal pushes, minimal number encoding, low-S signatures, NULLDUMMY, clean stack, and no Chronicle sighash); version 2 and above relax all of them
 - **Signatures**: simulated by default, or verified for real against a transaction context you supply
 
 ### Verification against a second engine
@@ -58,20 +58,12 @@ npm test           # run the test suite
 
 ### Rúnar packages
 
-Verify, Deploy, balance lookups and preimage computation call the Rúnar
-packages, which are **not** on npm and are not listed in `package.json`. They are
-linked from a local checkout:
+Verify, Deploy, balance lookups and preimage computation call Rúnar code, which
+is **not** on npm. The subset the app uses is vendored under
+`src/vendor/runar`, so `npm install` is all the setup there is.
 
-```bash
-git clone https://github.com/icellan/runar ~/bsv/runar
-cd ~/bsv/runar && npm install && npm run build
-cd /path/to/bscript
-ln -s ~/bsv/runar/packages/runar-testing node_modules/runar-testing
-ln -s ~/bsv/runar/packages/runar-sdk     node_modules/runar-sdk
-```
-
-Without them the app still runs, steps and executes scripts. Verify reports
-`Rúnar ScriptVM not available`, and the tests that need them skip.
+See `src/vendor/runar/README.md` for what was copied, from which upstream
+commit, and how to re-sync it.
 
 ## Syntax
 

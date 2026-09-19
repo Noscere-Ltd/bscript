@@ -220,6 +220,7 @@ changes the rules, not just a number.
 - numbers must not carry a byte they do not need
 - signatures must be low-S, and `checkMultiSig` must leave a null dummy
 - exactly one item may remain on the stack at the end (clean stack)
+- a signature may not use the Chronicle sighash type (bit 0x20)
 
 **Version 2 and above** relax all of them.
 

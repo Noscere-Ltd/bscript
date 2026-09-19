@@ -119,8 +119,9 @@ judged under. It changes behaviour, not just a displayed number.
 - `checkMultiSig` must leave a null dummy (NULLDUMMY)
 - unlocking scripts must be push-only
 - exactly one item may remain on the stack
+- a signature may not use the Chronicle sighash type (bit 0x20)
 
-**Version 2 and above** relax all six.
+**Version 2 and above** relax all seven.
 
 Use version 1 when you want to know whether a script would be accepted on
 chain. Use version 2 when you are exploring, teaching, or deliberately leaving
@@ -168,8 +169,8 @@ through Rúnar's `ScriptVM` as well as the built-in interpreter, then compares
 the two verdicts. Two independent implementations agreeing is much stronger
 evidence than one implementation succeeding.
 
-Verify needs the Rúnar packages linked. See the Rúnar section of `readme.md`.
-Without them the console says `Rúnar ScriptVM not available`.
+The `ScriptVM` is vendored under `src/vendor/runar`, so Verify needs no setup
+beyond `npm install`.
 
 ### Reading the output
 
@@ -398,10 +399,11 @@ The in-app Help panel has the full syntax with examples.
 | `Script failed: the stack is empty at the end of the script` | Nothing was left to judge. |
 | `Script failed: the top stack item is false` | The script ran but evaluated to false. |
 | `Script failed: N items left on the stack, and version 1 requires exactly one` | The clean stack rule. Reduce to one item or use version 2. |
+| `The signature hash type is invalid before Chronicle` | The signature's sighash byte sets 0x20, which is only valid on version 2 and above. |
 | `Initial stack item "..." is not a decimal number or 0x-prefixed hex` | Fix the item or remove it. Everything else still loads. |
 | `Preimage NOT verified: no transaction context` | `checkPreimage` was a no-op. Apply a context, or press Verify. |
 | `Not compared: this script checks a signature that the simulator only pretends to verify` | Verify declined a meaningless comparison. Turn on signature verification with a real signature. |
-| `Rúnar ScriptVM not available` | The Rúnar packages are not linked. See `readme.md`. |
+| `Rúnar ScriptVM not available` | The vendored `ScriptVM` failed to load. See `src/vendor/runar/README.md`. |
 | `Minimum 1 satoshi` | Deploy will not broadcast an output below 1 satoshi. |
 | `Result: MISMATCH - Interpreters disagree!` | The ScriptVM is the reference. Treat the interpreter as wrong and report it. |
 

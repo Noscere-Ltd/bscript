@@ -55,8 +55,8 @@ contextBridge.exposeInMainWorld('ai', {
 // Expose Rúnar integration functions
 contextBridge.exposeInMainWorld('runar', {
   // ScriptVM verification
-  verifyScript: (scriptHex, initialStackHex) =>
-    ipcRenderer.invoke('runar-verify-script', { scriptHex, initialStackHex }),
+  verifyScript: (scriptHex, initialStackHex, txVersion) =>
+    ipcRenderer.invoke('runar-verify-script', { scriptHex, initialStackHex, txVersion }),
 
   verifyPreimage: (scriptHex) =>
     ipcRenderer.invoke('runar-verify-preimage', { scriptHex }),

@@ -291,8 +291,8 @@ ipcMain.handle('bsv-hash160', async (event, data) => {
 // These run in the main process where Node modules are available
 
 const { sighashFor, verifySig, verifyMultiSig } = require('./signature');
-const { pushDataHex } = require('../shared/push-data');
 const { preimageForScript } = require('./verify-preimage');
+const { runInVm } = require('./vm-verify');
 
 ipcMain.handle('bsv-verify-sig', async (event, params) => verifySig(params));
 
@@ -348,35 +348,10 @@ ipcMain.handle('runar-verify-preimage', async (event, { scriptHex }) => {
   }
 });
 
-ipcMain.handle('runar-verify-script', async (event, { scriptHex, initialStackHex }) => {
+ipcMain.handle('runar-verify-script', async (event, params) => {
   try {
-    const { ScriptVM, hexToBytes, bytesToHex } = await getRunarTesting();
-
-    // Build unlocking script from initial stack values (push each as data)
-    let unlockingHex = '';
-    for (const itemHex of initialStackHex || []) {
-      unlockingHex += pushDataHex(itemHex || '');
-    }
-
-    const vm = new ScriptVM();
-    let result;
-
-    if (unlockingHex) {
-      const unlockingScript = hexToBytes(unlockingHex);
-      const lockingScript = hexToBytes(scriptHex);
-      result = vm.execute(unlockingScript, lockingScript);
-    } else {
-      result = vm.executeHex(scriptHex);
-    }
-
-    return {
-      success: result.success,
-      stack: result.stack.map(bytes => bytesToHex(bytes)),
-      altStack: result.altStack.map(bytes => bytesToHex(bytes)),
-      vmError: result.error || null,
-      opsExecuted: result.opsExecuted,
-      maxStackDepth: result.maxStackDepth
-    };
+    // src/main/vm-verify.js runs the VM under the rules of params.txVersion
+    return runInVm(await getRunarTesting(), params || {});
   } catch (error) {
     return { success: false, stack: [], altStack: [], vmError: error.message, error: error.message };
   }

@@ -532,10 +532,17 @@ async function verifyScriptNow() {
   try {
     logToConsole('Verifying script against Rúnar ScriptVM...', 'info');
 
-    // Step 1: Compile, and decide what the comparison can honestly claim
-    const tempInterpreter = new ScriptInterpreter();
-    await tempInterpreter.parse(script, [], currentFilePath);
-    const scriptHex = compileInstructionsToHex(tempInterpreter.instructions);
+    // Step 1: Compile, and decide what the comparison can honestly claim.
+    // A script that does not compile has nothing to hand the ScriptVM.
+    let scriptHex;
+    try {
+      const tempInterpreter = new ScriptInterpreter();
+      await tempInterpreter.parse(script, [], currentFilePath);
+      scriptHex = compileInstructionsToHex(tempInterpreter.instructions);
+    } catch (error) {
+      logToConsole(`The script does not compile, so nothing was compared: ${error.message}`, 'error');
+      return;
+    }
 
     let restoreContext = null;
     const plan = planVerification(scriptHex, {
@@ -588,7 +595,7 @@ async function verifyScriptNow() {
 
     // Step 4: Same stack to the ScriptVM, converted the way the interpreter does
     const initialStackHex = initialStack.map(v => interpreter.toHexString(v));
-    const vmResult = await window.runar.verifyScript(scriptHex, initialStackHex);
+    const vmResult = await window.runar.verifyScript(scriptHex, initialStackHex, settings.txVersion);
 
     if (vmResult.error && vmResult.error.includes('not available')) {
       logToConsole('Rúnar ScriptVM not available: ' + vmResult.error, 'error');
@@ -608,12 +615,12 @@ async function verifyScriptNow() {
       logToConsole(`ScriptVM error: ${vmResult.vmError}`, 'warning');
     }
 
-    // Compare success/failure
-    if (localSuccess === vmResult.success) {
-      logToConsole('Result: MATCH - Both interpreters agree', 'success');
-    } else {
-      logToConsole('Result: MISMATCH - Interpreters disagree!', 'error');
-    }
+    // Compare verdicts and final stacks
+    const outcome = verifyVerdict(
+      { success: localSuccess, error: localResult.error, stackHex: localStack.map(v => interpreter.toHexString(v)) },
+      { success: vmResult.success, error: vmResult.vmError, stackHex: vmResult.stack });
+    logToConsole('Result: ' + outcome.message,
+      { MATCH: 'success', BOTH_FAILED: 'warning', MISMATCH: 'error' }[outcome.verdict]);
 
     // Reset interpreter state (verification is non-destructive to UI)
     interpreter.reset();

@@ -817,8 +817,10 @@ function highlightCurrentInstruction() {
   if (lineNumber !== undefined && lineNumber !== null) {
     const monacoLine = lineNumber + 1; // Monaco uses 1-based line numbers
 
-    // Highlight only the current line with a subtle left border
-    const decorations = editor.deltaDecorations([], [
+    // Highlight only the current line with a subtle left border. The previous
+    // step's ids go in so this one replaces it: passing [] left every earlier
+    // line marked, and Reset could only clear the last.
+    const decorations = editor.deltaDecorations(editor._currentDecorations || [], [
       {
         range: new monaco.Range(monacoLine, 1, monacoLine, 1),
         options: {
@@ -1503,31 +1505,7 @@ function appendAIMessage(role, content, isLoading) {
   return msgEl;
 }
 
-function renderAIMarkdown(text) {
-  // Escape the whole reply first, then add the formatting tags. Escaping only
-  // the code spans left every other part of the reply able to inject markup.
-  let html = escapeHtml(text);
-
-  // Code blocks (```...```)
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => `<pre><code>${code}</code></pre>`);
-
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, (_, code) => `<code>${code}</code>`);
-
-  // Bold
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-
-  // Italic
-  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-
-  // Line breaks -> paragraphs
-  html = html.split('\n\n').map(para => {
-    if (para.match(/^<(pre|ul|ol|h[1-3])/)) return para;
-    return `<p>${para.replace(/\n/g, '<br>')}</p>`;
-  }).join('');
-
-  return html;
-}
+// renderAIMarkdown lives in ai-markdown.js so node can test it
 
 // ---------------------------------------------------------------------------
 // Deploy Panel Functions (continued)

@@ -8,6 +8,7 @@ const APP_SCRIPTS = [
   '../shared/push-data.js',
   '../shared/script-walk.js',
   'escape-html.js',
+  'ai-markdown.js',
   'interpreter.js',
   'syntax.js',
   'push-tx-binding.js',

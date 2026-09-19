@@ -314,6 +314,18 @@ function disassemble(hexString) {
       continue;
     }
 
+    // OP_PUSHDATA4, which emitPushData emits past 65535 bytes
+    if (op === 0x4e) {
+      i++;
+      if (i + 4 > bytes.length) { parts.push('[INVALID: truncated OP_PUSHDATA4]'); break; }
+      var len4 = (bytes[i] | (bytes[i + 1] << 8) | (bytes[i + 2] << 16) | (bytes[i + 3] << 24)) >>> 0;
+      i += 4;
+      if (i + len4 > bytes.length) { parts.push('[INVALID: truncated OP_PUSHDATA4 data]'); break; }
+      parts.push(bytesToHex(bytes.slice(i, i + len4)));
+      i += len4;
+      continue;
+    }
+
     // Named opcode
     if (OPCODE_NAMES[op]) {
       parts.push(OPCODE_NAMES[op]);

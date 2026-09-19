@@ -110,3 +110,20 @@ test('toHashBuffer decodes hex items and leaves text alone', () => {
   assert.deepStrictEqual(toHashBuffer('hello'), Buffer.from('hello', 'utf8'));
   assert.deepStrictEqual(toHashBuffer(1000), Buffer.from('1000', 'utf8'));
 });
+
+test('num2bin has no upper bound on the size, as cat has none', async () => {
+  const padded = await top('1 521 num2bin');
+  assert.strictEqual(padded, '0x01' + '00'.repeat(520));
+  assert.match(await failure('1 -1 num2bin'), /num2bin cannot produce -1 bytes/);
+});
+
+test('0x is the empty push', async () => {
+  assert.deepStrictEqual(await stack('0x size'), ['0x', 0]);
+  assert.strictEqual(await top('0x 0xaa cat'), '0xaa');
+});
+
+test('a hex literal with an odd digit count fails when it is pushed', async () => {
+  assert.match(await failure('0x123'), /Hex literal must have even number of digits: 0x123/);
+  // A branch that does not run pushes nothing
+  assert.deepStrictEqual(await stack('0 if 0x123 endIf 1'), [1]);
+});

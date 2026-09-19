@@ -31,6 +31,7 @@ const CASES = [
   { name: 'arithmetic', stack: [], expect: [30, 100, 5, 6, 200, 25, 1] },
   { name: 'bitwise', stack: [], expect: ['0x08', '0x0e', '0x06', '0x14', '0x05', '0xfa'] },
   { name: 'conditionals', stack: [], expect: [1100, 51, 999] },
+  { name: 'macros', stack: [], expect: [500] },
   { name: 'stack-operations', stack: [], expect: [1, 2, 3, 5, 5, 4, 4, 5, 4, 9] },
   { name: 'multisig-2of3', stack: [0, '0xaa', '0xbb'], expect: [1] },
   {
@@ -131,7 +132,5 @@ test('every example is covered here', () => {
     .map((f) => f.replace('.bscript', ''))
     .filter((name) => !covered.has(name));
 
-  // macros.bscript uses a quoted string literal, which the tokeniser does not
-  // support. Left uncovered deliberately.
-  assert.deepStrictEqual(uncovered, ['macros']);
+  assert.deepStrictEqual(uncovered, []);
 });

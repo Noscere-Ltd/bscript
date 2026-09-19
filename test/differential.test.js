@@ -65,7 +65,9 @@ const CORPUS = {
     // nodes require. Compiling them the long way makes a script a node
     // rejects as non-minimal, which only comparing against a real engine
     // catches.
-    '0x01 0x02 cat', '0x10 size', '0x81 bin2num', '0x0f 0x0f equal'
+    '0x01 0x02 cat', '0x10 size', '0x81 bin2num', '0x0f 0x0f equal',
+    // num2bin has no size limit after Genesis, and 0x is the empty push
+    '1 521 num2bin', '0x', '0x size', '0x 0xaa cat', '0x not'
   ],
 
   stack: [
@@ -125,7 +127,7 @@ const CORPUS = {
   'error paths': [
     'drop', '1 0 div', '1 0 mod', '0 verify', '1 if 2', '0x11 0x2233 and',
     '0x1122 5 split', 'endIf', '1 else 2 endIf', '1 2 5 pick', '1 2 3 -1 pick',
-    '0 0 equalVerify',
+    '0 0 equalVerify', '0x123',
     // checkMultiSig counts out of range: a negative key count, a negative
     // signature count, and more signatures than keys
     '0 0 -1 checkMultiSig', '0 -1 0 checkMultiSig', '0 1 1 2 3 1 checkMultiSig'

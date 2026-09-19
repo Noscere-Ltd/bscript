@@ -17,6 +17,8 @@ class ScriptInterpreter {
     this.executionHistory = [];
     this.status = 'idle'; // idle, running, success, error
     this.error = null;
+    this.errorLine = undefined;
+    this.errorInstruction = undefined;
     this.breakpoints = new Set();
     this.skipIPIncrement = false; // Flag to prevent double-increment in flow control
     this.condStack = []; // One entry per open if/notIf block: is that branch taken?
@@ -26,7 +28,7 @@ class ScriptInterpreter {
     // Settings (preserved across resets)
     if (!this.enableSignatures) this.enableSignatures = false;
     if (!this.network) this.network = 'mainnet';
-    if (!this.txVersion) this.txVersion = 1;
+    if (this.txVersion === undefined) this.txVersion = 1;
     // The opcode tests and the differential harness drive the script to the
     // end and read the stack, the same way Spend.step() is used without
     // Spend.validate(). They turn this off; the app never does.
@@ -285,33 +287,35 @@ class ScriptInterpreter {
       return repetitions.join(' ');
     });
 
-    // Expand xSwap macros: xSwap_n (swap top with nth item)
+    // Expand xSwap macros: xSwap_n swaps the top item with the item n below it
     expanded = expanded.replace(/\bxSwap_(\d+)\b/g, (match, n) => {
       const depth = parseInt(n);
-      if (depth === 0 || depth === 1) return 'swap'; // xSwap_1 is just swap
+      if (depth === 0) return ''; // the top item swapped with itself
+      if (depth === 1) return 'swap';
 
-      // xSwap_n: roll n items to bring nth to top, swap, then roll back
-      const rollForward = depth.toString();
-      const rollBack = (depth - 1).toString();
-      return `${rollForward} roll swap ${rollBack} roll`;
+      // Bring the item to the top and swap, which leaves the old top one
+      // below it. Script has no inverse of roll, so the old top is sunk to
+      // depth n by rolling that depth n times.
+      // ponytail: 2n + 3 tokens. An alt-stack version is no shorter.
+      return `${depth} roll swap` + ` ${depth} roll`.repeat(depth);
     });
 
-    // Expand xDrop macros: xDrop_n (drop nth item)
+    // Expand xDrop macros: xDrop_n drops the item n below the top
     expanded = expanded.replace(/\bxDrop_(\d+)\b/g, (match, n) => {
       const depth = parseInt(n);
       if (depth === 0) return 'drop'; // xDrop_0 is just drop
 
-      // xDrop_n: roll n items to bring nth to top, drop, then reverse remaining
+      // xDrop_n: bring the item to the top and drop it
       const rollForward = depth.toString();
       return `${rollForward} roll drop`;
     });
 
-    // Expand xRot macros: xRot_n (rotate nth item to top)
+    // Expand xRot macros: xRot_n moves the item n below the top to the top
     expanded = expanded.replace(/\bxRot_(\d+)\b/g, (match, n) => {
       const depth = parseInt(n);
-      if (depth === 0 || depth === 1) return ''; // xRot_0/1 is nop
+      if (depth === 0) return ''; // the top item is already there
 
-      // xRot_n: roll n items to bring nth to top
+      // xRot_n: roll the item to the top
       return `${depth} roll`;
     });
 
@@ -465,7 +469,10 @@ class ScriptInterpreter {
         this.mainStack.push(value);
         this.addHistory(instruction, `Push ${value}`);
       } else if (this.isHexLiteral(instruction)) {
-        // Hex literal (0x...)
+        // Hex literal (0x...). Whole bytes only, in the compiler's words.
+        if (instruction.length % 2 !== 0) {
+          throw new Error('Hex literal must have even number of digits: ' + instruction);
+        }
         const bytes = this.parseHex(instruction);
         this.mainStack.push(bytes);
         this.addHistory(instruction, `Push ${instruction}`);
@@ -508,7 +515,7 @@ class ScriptInterpreter {
 
   // Check if token is hex literal
   isHexLiteral(token) {
-    return /^0x[0-9a-fA-F]+$/.test(token);
+    return /^0x[0-9a-fA-F]*$/.test(token);
   }
 
   // Parse number
@@ -1341,7 +1348,9 @@ class ScriptInterpreter {
   // Little-endian, sign-magnitude byte encoding (Bitcoin Script number format)
   op_num2bin() {
     const size = this.toIndex(this.popStack());
-    if (size < 0 || size > ScriptInterpreter.MAX_ELEMENT_SIZE) {
+    // ponytail: no upper bound, the same as Spend after Genesis. A very large
+    // size allocates that much memory.
+    if (size < 0) {
       throw new Error(`num2bin cannot produce ${size} bytes`);
     }
 
@@ -1622,7 +1631,6 @@ class ScriptInterpreter {
 
 // SIGHASH_ALL | SIGHASH_FORKID, the type the OP_PUSH_TX binding pins
 ScriptInterpreter.SIGHASH_ALL_FORKID = 0x41;
-ScriptInterpreter.MAX_ELEMENT_SIZE = 520;
 
 // Export for use in app
 if (typeof module !== 'undefined' && module.exports) {

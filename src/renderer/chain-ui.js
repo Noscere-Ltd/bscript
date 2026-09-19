@@ -366,12 +366,18 @@ async function prepareChainRun() {
 }
 
 async function runChainTransition() {
+  await runExclusive(runChainTransitionNow);
+}
+
+async function runChainTransitionNow() {
   logToConsole('--- Chain Transition: Step ' + (chainEngine.stepCount + 1) + ' ---', 'info');
 
   var run = await prepareChainRun();
   if (!run) return;
 
   logToConsole('Executing contract...', 'info');
+  // The transition replaces any step run in progress
+  executionMode = 'idle';
   var result;
   try {
     result = await interpreter.run(editor.getValue(), run.initialStack, currentFilePath);

@@ -305,14 +305,22 @@ async function resolveInitialStack() {
   return getInitialStackValues();
 }
 
-// Run entire script
+// Run entire script. run-lock.js lets one run through at a time.
 async function runScript() {
+  await runExclusive(runScriptNow);
+}
+
+async function runScriptNow() {
   const script = editor.getValue();
 
   if (!script.trim()) {
     logToConsole('No script to execute', 'warning');
     return;
   }
+
+  // A full run replaces any step run in progress, so the badge and the next
+  // Step must not carry on as if it were still stepping
+  executionMode = 'idle';
 
   try {
     logToConsole('Executing script...', 'info');
@@ -363,11 +371,13 @@ async function runScript() {
 // Step through script one instruction at a time. In chain mode the step run
 // borrows the transaction context until it goes back to idle.
 async function stepScript() {
-  try {
-    await stepOnce();
-  } finally {
-    if (executionMode === 'idle') restoreChainContext();
-  }
+  await runExclusive(async () => {
+    try {
+      await stepOnce();
+    } finally {
+      if (executionMode === 'idle') restoreChainContext();
+    }
+  });
 }
 
 async function stepOnce() {
@@ -509,6 +519,10 @@ function switchView(view) {
 
 // Verify script against Rúnar ScriptVM
 async function verifyScript() {
+  await runExclusive(verifyScriptNow);
+}
+
+async function verifyScriptNow() {
   const script = editor.getValue();
   if (!script.trim()) {
     logToConsole('No script to verify', 'warning');
@@ -565,7 +579,9 @@ async function verifyScript() {
         'because the binding rejects any other one in both engines', 'info');
     }
 
-    // Step 3: Run through our interpreter
+    // Step 3: Run through our interpreter. This ends any step run in
+    // progress, so the next Step starts a fresh one.
+    executionMode = 'idle';
     const localResult = await interpreter.run(script, initialStack, currentFilePath);
     const localStack = [...interpreter.mainStack];
     const localSuccess = localResult.success;
@@ -609,6 +625,9 @@ async function verifyScript() {
 
   } catch (error) {
     logToConsole(`Verification error: ${error.message}`, 'error');
+  } finally {
+    // Only matters when Verify cut a chain-mode step run short
+    if (executionMode === 'idle') restoreChainContext();
   }
 }
 

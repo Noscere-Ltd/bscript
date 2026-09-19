@@ -17,7 +17,8 @@ function loadChainUi({
   newStateText = '{"count":1}', editorHex = 'c0de', logs = []
 } = {}) {
   // stack-input.js goes in first, the way boot.js loads it before chain-ui.js
-  const src = 'var currentFilePath = null;\n' +
+  const src = 'var currentFilePath = null; var executionMode = \'stepping\';\n' +
+    fs.readFileSync(path.join(SRC, 'run-lock.js'), 'utf8') +
     fs.readFileSync(path.join(SRC, 'stack-input.js'), 'utf8') +
     fs.readFileSync(path.join(SRC, 'chain-ui.js'), 'utf8');
 
@@ -64,7 +65,8 @@ function loadChainUi({
   const factory = new Function(
     'ChainEngine', 'document', 'window', 'logToConsole', 'editor', 'interpreter', 'updateUI',
     'settings',
-    `${src}\nreturn { prepareChainRun, collectNewState, chainParamStack, runChainTransition };`
+    `${src}\nreturn { prepareChainRun, collectNewState, chainParamStack, runChainTransition,
+      mode: () => executionMode };`
   );
 
   const api = factory(
@@ -194,6 +196,33 @@ test('a chain run puts back the transaction context it borrowed', async () => {
 
   assert.deepStrictEqual(interpreter.txContext, { sighash: 'aa'.repeat(32) });
   assert.strictEqual(interpreter.txContextMode, 'sighash');
+});
+
+test('a second Run Transition while the first is in flight does nothing', async () => {
+  // F57: two clicks advanced the chain twice on one transaction
+  let open;
+  const gate = new Promise((resolve) => { open = resolve; });
+  let runs = 0;
+  const interpreter = {
+    mainStack: [],
+    setTransactionContext: () => {},
+    run: async () => { runs++; await gate; return { success: false, error: 'stop here' }; },
+    reset: () => {}
+  };
+  const { runChainTransition, mode } = loadChainUi({ interpreter });
+
+  const first = runChainTransition();
+  await runChainTransition();
+  open();
+  await first;
+  assert.strictEqual(runs, 1);
+
+  // F73: the transition ended whatever step run was in progress
+  assert.strictEqual(mode(), 'idle');
+
+  // and the lock is released afterwards
+  await runChainTransition();
+  assert.strictEqual(runs, 2);
 });
 
 test('prepareChainRun reports failure instead of returning a partial stack', async () => {

@@ -14,6 +14,7 @@ const APP_SCRIPTS = [
   'stack-input.js',
   'compiler.js',
   'verify-plan.js',
+  'run-lock.js',
   'chain.js',
   'chain-ui.js',
   'app.js'

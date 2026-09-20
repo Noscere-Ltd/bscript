@@ -122,3 +122,12 @@ test('compileContract tells an edited contract from the loaded one', () => {
   assert.strictEqual(e.compileContract('1 // a comment changes nothing'), e.contractHex);
   assert.notStrictEqual(e.compileContract('2'), e.contractHex);
 });
+
+// F89
+test('a contract that uses import is refused with a reason', () => {
+  const e = new ChainEngine();
+  assert.throws(() => e.loadProject(project(), { './c.bscript': "import * from './lib.bscript'\n1" }),
+    /cannot use import/);
+  // The word in a comment is not an import
+  e.loadProject(project(), { './c.bscript': '// import nothing from here\n1' });
+});

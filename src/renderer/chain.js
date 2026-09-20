@@ -11,6 +11,11 @@ function ChainEngine() {
 // uses it again before each run to see whether the editor still holds the
 // contract the current UTXO was built from.
 ChainEngine.prototype.compileContract = function(contractSource) {
+  // ponytail: imports are refused, not resolved. Resolving is async and would
+  // make loadProject and every caller async. Do that if a contract needs one.
+  if (/^\s*import\s.*\sfrom\s/m.test(contractSource)) {
+    throw new Error('A chain contract cannot use import. Paste the imported script into the contract.');
+  }
   // Use a temporary interpreter for macro expansion
   var tempInterp = new ScriptInterpreter();
   var expanded = tempInterp.expandMacros(contractSource);

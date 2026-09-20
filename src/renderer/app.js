@@ -529,6 +529,7 @@ async function verifyScriptNow() {
     return;
   }
 
+  let restoreContext = null;
   try {
     logToConsole('Verifying script against Rúnar ScriptVM...', 'info');
 
@@ -544,7 +545,6 @@ async function verifyScriptNow() {
       return;
     }
 
-    let restoreContext = null;
     const plan = planVerification(scriptHex, {
       bindingHex: CHECK_PREIMAGE_BINDING_HEX,
       substitutePreimage: settings.substitutePreimage,
@@ -624,15 +624,16 @@ async function verifyScriptNow() {
 
     // Reset interpreter state (verification is non-destructive to UI)
     interpreter.reset();
-    if (restoreContext) {
-      interpreter.txContext = restoreContext.context;
-      interpreter.txContextMode = restoreContext.mode;
-    }
     updateUI();
 
   } catch (error) {
     logToConsole(`Verification error: ${error.message}`, 'error');
   } finally {
+    // Here, not above: the early return and a thrown error give it back too
+    if (restoreContext) {
+      interpreter.txContext = restoreContext.context;
+      interpreter.txContextMode = restoreContext.mode;
+    }
     // Only matters when Verify cut a chain-mode step run short
     if (executionMode === 'idle') restoreChainContext();
   }

@@ -52,7 +52,7 @@ async function openChainProject() {
       return;
     }
 
-    chainEngine.loadProject(loadResult.project, loadResult.bscriptFiles);
+    await chainEngine.loadProject(loadResult.project, loadResult.bscriptFiles, loadResult.contractPath);
 
     // Switch to chain mode
     toggleChainMode(true);
@@ -276,7 +276,7 @@ async function prepareChainRun() {
   try {
     // The UTXO was built from the contract as it was loaded. Running edited
     // text against it proves nothing about either version.
-    if (chainEngine.compileContract(editor.getValue()) !== chainEngine.contractHex) {
+    if ((await chainEngine.compileContract(editor.getValue(), currentFilePath)) !== chainEngine.contractHex) {
       logToConsole('The contract in the editor no longer matches the loaded chain project. ' +
         'Save it and open the project again to run the chain against the new contract.', 'error');
       return null;

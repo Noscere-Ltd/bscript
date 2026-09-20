@@ -10,28 +10,18 @@ function ChainEngine() {
 // Compile contract source to hex. loadProject uses it, and the chain panel
 // uses it again before each run to see whether the editor still holds the
 // contract the current UTXO was built from.
-ChainEngine.prototype.compileContract = function(contractSource) {
-  // ponytail: imports are refused, not resolved. Resolving is async and would
-  // make loadProject and every caller async. Do that if a contract needs one.
-  if (/^\s*import\s.*\sfrom\s/m.test(contractSource)) {
-    throw new Error('A chain contract cannot use import. Paste the imported script into the contract.');
-  }
-  // Use a temporary interpreter for macro expansion
-  var tempInterp = new ScriptInterpreter();
-  var expanded = tempInterp.expandMacros(contractSource);
-  // Strip comments and tokenize
-  var tokens = [];
-  var lines = expanded.split('\n');
-  for (var i = 0; i < lines.length; i++) {
-    var line = lines[i].replace(/\/\/.*$/, '').trim();
-    if (!line) continue;
-    var lineTokens = line.split(/\s+/).filter(function(t) { return t; });
-    tokens.push.apply(tokens, lineTokens);
-  }
+ChainEngine.prototype.compileContract = async function(contractSource, contractPath) {
+  // The interpreter's own parse: imports resolved against the contract's
+  // path, comments out, macros expanded
+  var interp = new ScriptInterpreter();
+  var tokens = await interp.parse(contractSource, [], contractPath || null);
+  // A script run carries on without a failed import. A contract cannot: it
+  // would compile to different code and say nothing.
+  if (interp.importErrors.length > 0) throw new Error(interp.importErrors[0]);
   return compileInstructionsToHex(tokens);
 };
 
-ChainEngine.prototype.loadProject = function(projectJson, bscriptFiles) {
+ChainEngine.prototype.loadProject = async function(projectJson, bscriptFiles, contractPath) {
   // projectJson is the parsed .bsm.json
   // bscriptFiles is { relativePath: fileContent } map
   var contractSource = bscriptFiles[projectJson.contract];
@@ -43,7 +33,7 @@ ChainEngine.prototype.loadProject = function(projectJson, bscriptFiles) {
   // Method unlock scripts are not compiled: they are never executed.
   var next = new ChainEngine();
   next.project = projectJson;
-  next.contractHex = next.compileContract(contractSource);
+  next.contractHex = await next.compileContract(contractSource, contractPath);
   next.resetChain();
 
   this.project = next.project;

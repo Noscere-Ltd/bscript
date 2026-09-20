@@ -24,6 +24,7 @@ class ScriptInterpreter {
     this.condStack = []; // One entry per open if/notIf block: is that branch taken?
     this.elseUsed = []; // One entry per open if/notIf block: has it had its else?
     this.namedImports = {}; // Store named imports for later expansion
+    this.importErrors = []; // A failed import becomes a comment. The chain engine refuses one.
     this.lastCodeSeparator = null; // Instruction index of the last codeSeparator
 
     // Settings (preserved across resets)
@@ -233,6 +234,7 @@ class ScriptInterpreter {
       } catch (error) {
         // Replace import with error comment
         resolved = resolved.replace(imp.full, () => `// Import error: ${error.message}`);
+        this.importErrors.push(error.message);
         console.error('Import error:', error);
       }
     }

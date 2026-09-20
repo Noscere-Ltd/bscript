@@ -21,8 +21,12 @@ function renderAIMarkdown(text) {
 
   var html = escapeHtml(rest);
 
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, function (_, code) { return '<code>' + code + '</code>'; });
+  // Inline code, held aside like the blocks so bold and italic leave it alone
+  var spans = [];
+  html = html.replace(/`([^`]+)`/g, function (_, code) {
+    spans.push(code);
+    return '\u0000c' + (spans.length - 1) + '\u0000';
+  });
 
   // Bold
   html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
@@ -36,7 +40,7 @@ function renderAIMarkdown(text) {
     if (marker) return '<pre><code>' + escapeHtml(blocks[Number(marker[1])]) + '</code></pre>';
     if (!para.trim()) return '';
     return '<p>' + para.replace(/\n/g, '<br>') + '</p>';
-  }).join('');
+  }).join('').replace(/\u0000c(\d+)\u0000/g, function (_, i) { return '<code>' + spans[Number(i)] + '</code>'; });
 }
 
 if (typeof module !== 'undefined' && module.exports) {

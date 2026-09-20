@@ -68,3 +68,9 @@ test('each step decoration replaces the one before it', () => {
   assert.match(highlight, /deltaDecorations\(editor\._currentDecorations \|\| \[\], \[/);
   assert.doesNotMatch(highlight, /deltaDecorations\(\[\], /);
 });
+
+// F88
+test('italic and bold leave an inline code span alone', () => {
+  assert.strictEqual(renderAIMarkdown('use `a * b * c` and *this*'),
+    '<p>use <code>a * b * c</code> and <em>this</em></p>');
+});

@@ -1,18 +1,19 @@
 // Counter Contract - Locking Script
 // State: [count] (serialized after OP_RETURN)
 //
-// This contract verifies the preimage and ensures the
-// spending transaction preserves the UTXO value.
+// This contract verifies the preimage and that the input amount is above
+// zero. It does not check the new state: the New State box decides it, so
+// "increment" with an unchanged count passes.
 
 // Verify preimage authenticity (OP_PUSH_TX)
 checkPreimage
 
-// Extract the input amount and verify it's preserved
+// Extract the input amount and verify it is above zero
 dup
 extractAmount
 0 greaterThan
 verify
 
-// Script succeeds - the chain engine validates state transitions
+// Script succeeds. Nothing here or in the chain engine checks the count.
 drop
 true

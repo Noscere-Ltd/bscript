@@ -29,7 +29,7 @@ Script, with visual stack inspection. Built with Electron and Monaco Editor.
   on the stack to the transaction being signed. In the debugger it is only checked
   when a transaction context is configured; without one it is a no-op and says so
   in the execution history. Verify always checks it for real.
-- **Preimage field extractors**: `extractVersion`, `extractHashPrevouts`, `extractHashSequence`, `extractOutpoint`, `extractInputIndex`, `extractAmount`, `extractSequence`, `extractOutputHash`, `extractLocktime`, `extractSigHashType`
+- **Preimage field extractors**: `extractVersion`, `extractHashPrevouts`, `extractHashSequence`, `extractOutpoint`, `extractOutpointIndex`, `extractAmount`, `extractSequence`, `extractOutputHash`, `extractLocktime`, `extractSigHashType`
 - **Chain mode**: load a `.bsm.json` project and step a stateful contract through its methods. The chain panel simulates the transitions; it does not broadcast them.
 
 ### Development tools

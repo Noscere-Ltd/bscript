@@ -66,6 +66,7 @@ test('the fixed-offset extractors read from the start of the preimage', async ()
   assert.strictEqual(await top('extractHashSequence', [PREIMAGE]), '0x' + '11'.repeat(32));
   assert.strictEqual(await top('extractOutpoint', [PREIMAGE]), '0x' + 'aa'.repeat(32) + '01000000');
   assert.strictEqual(await top('extractInputIndex', [PREIMAGE]), 1);
+  assert.strictEqual(await top('extractOutpointIndex', [PREIMAGE]), 1);
 });
 
 test('the end-relative extractors survive a variable-length scriptCode', async () => {

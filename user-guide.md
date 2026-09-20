@@ -266,7 +266,7 @@ leaves the preimage on the stack, `dup` before all but the last read:
 | `extractHashPrevouts` | hashPrevouts, 32 bytes |
 | `extractHashSequence` | hashSequence, 32 bytes |
 | `extractOutpoint` | the outpoint, 36 bytes |
-| `extractInputIndex` | the output index in the outpoint (preimage bytes 100 to 104), as a number. This is not the index of the input in the spending transaction. |
+| `extractOutpointIndex` (old name `extractInputIndex`) | the output index in the outpoint (preimage bytes 100 to 104), as a number. This is not the index of the input in the spending transaction. |
 | `extractAmount` | the input amount in satoshis, as a number |
 | `extractSequence` | nSequence, as a number |
 | `extractOutputHash` | hashOutputs, 32 bytes |

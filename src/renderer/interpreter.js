@@ -337,7 +337,8 @@ class ScriptInterpreter {
     expanded = expanded.replace(/\bextractHashPrevouts\b/g,  '4 split nip 32 split drop');
     expanded = expanded.replace(/\bextractHashSequence\b/g,  '36 split nip 32 split drop');
     expanded = expanded.replace(/\bextractOutpoint\b/g,      '68 split nip 36 split drop');
-    expanded = expanded.replace(/\bextractInputIndex\b/g,    '100 split nip 4 split drop bin2num');
+    // extractInputIndex is the old name. The field is the outpoint's output index.
+    expanded = expanded.replace(/\bextract(InputIndex|OutpointIndex)\b/g, '100 split nip 4 split drop bin2num');
 
     // End-relative extractors (from end of preimage, handles variable scriptCode length)
     expanded = expanded.replace(/\bextractAmount\b/g,        'size 52 sub split nip 8 split drop bin2num');

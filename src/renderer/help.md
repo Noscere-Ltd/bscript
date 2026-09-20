@@ -99,7 +99,8 @@ extractVersion        // nVersion, as a number
 extractHashPrevouts   // hashPrevouts, 32 bytes
 extractHashSequence   // hashSequence, 32 bytes
 extractOutpoint       // the outpoint, 36 bytes
-extractInputIndex     // the output index in the outpoint (bytes 100 to 104), as a number
+extractOutpointIndex  // the output index in the outpoint (bytes 100 to 104), as a number
+extractInputIndex     // old name for extractOutpointIndex
 extractAmount         // the input amount in satoshis, as a number
 extractSequence       // nSequence, as a number
 extractOutputHash     // hashOutputs, 32 bytes

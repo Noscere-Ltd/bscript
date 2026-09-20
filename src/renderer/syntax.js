@@ -47,7 +47,7 @@ const bitcoinScriptLanguageDef = {
     'hashCat', 'LOOP',
     'checkPreimage', 'codeSeparator',
     'extractVersion', 'extractHashPrevouts', 'extractHashSequence',
-    'extractOutpoint', 'extractInputIndex',
+    'extractOutpoint', 'extractOutpointIndex', 'extractInputIndex',
     'extractAmount', 'extractSequence', 'extractOutputHash',
     'extractLocktime', 'extractSigHashType',
 

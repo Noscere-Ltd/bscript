@@ -42,8 +42,8 @@ here, so `diff -r` against a runar checkout still reads cleanly:
    always returns a mainnet-format address, which WhatsOnChain testnet answers
    with a 400. A testnet signer accepts a WIF that starts with `c` and returns
    a testnet address, and a WIF for the other network is refused.
-   Uncompressed `5...` WIFs are still refused by `@bsv/sdk` (`Invalid WIF
-   length`), as upstream.
+   An uncompressed `5...` WIF is refused with a message that says so. Upstream
+   passes it to `@bsv/sdk`, which answers `Invalid WIF length`.
 
 `sdk/index.js` and `package.json` are ours, not upstream. The `package.json`
 exists only to mark this directory as ESM inside a CommonJS project.

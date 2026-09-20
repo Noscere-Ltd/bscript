@@ -34,6 +34,10 @@ export class LocalSigner {
             this.bsvPrivKey = PrivateKey.fromHex(keyInput);
             this.privateKeyHex = keyInput;
         }
+        else if (network !== 'testnet' && /^5[1-9A-HJ-NP-Za-km-z]{50}$/.test(keyInput)) {
+            // SVSCRIPT change: @bsv/sdk answers this with "Invalid WIF length"
+            throw new Error('LocalSigner: an uncompressed WIF (starts with 5) is not supported. Use a compressed key (starts with K or L).');
+        }
         else if ((network === 'testnet' ? /^c[1-9A-HJ-NP-Za-km-z]{51}$/ : /^[5KL][1-9A-HJ-NP-Za-km-z]{50,51}$/).test(keyInput)) {
             // WIF-encoded private key
             this.bsvPrivKey = PrivateKey.fromWif(keyInput);

@@ -131,6 +131,8 @@ test('LocalSigner follows the network', async () => {
   assert.throws(() => new LocalSigner(MAINNET_WIF, 'testnet'), /testnet WIF/);
   assert.throws(() => new LocalSigner(TESTNET_WIF, 'mainnet'), /mainnet WIF/);
   assert.throws(() => new LocalSigner(TESTNET_WIF), /mainnet WIF/);
+  // F86
+  assert.throws(() => new LocalSigner('5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVqvbTLvyTJ'), /uncompressed WIF/);
 
   // Both networks sign with the same key
   assert.strictEqual(await new LocalSigner(TESTNET_WIF, 'testnet').getPublicKey(),

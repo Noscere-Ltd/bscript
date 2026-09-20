@@ -101,6 +101,32 @@ test('an import * body ending in a comment does not swallow the rest of the line
   }
 });
 
+// F81, F82
+async function withImport(content, fn) {
+  const readImportFile = window.electronAPI.readImportFile;
+  window.electronAPI.readImportFile = async () => ({ success: true, content });
+  try { return await fn(); } finally { window.electronAPI.readImportFile = readImportFile; }
+}
+
+test('a multi-line import leaves the error line of the importing script alone', async () => {
+  for (const src of ["import * from './lib.bscript'\n1\n0 verify", "import lib from './lib.bscript'\nlib\n0 verify"]) {
+    await withImport('2\n3\nadd\ndrop', async () => {
+      const interp = new ScriptInterpreter();
+      const result = await interp.run(src, [], pathOf('lib-user'));
+      assert.strictEqual(result.success, false);
+      assert.strictEqual(interp.errorLine, 2, src);
+    });
+  }
+});
+
+test('a dollar sign in an imported body is pasted as written', async () => {
+  await withImport("1 $& $'", async () => {
+    const interp = new ScriptInterpreter();
+    const tokens = await interp.parse("import * from './lib.bscript'", [], pathOf('lib-user'));
+    assert.deepStrictEqual(tokens, ['1', '$&', "$'"]);
+  });
+});
+
 test('hash-puzzle.bscript is solved by the secret its header names', async () => {
   const interp = new ScriptInterpreter();
   const result = await interp.run(read('hash-puzzle'), [42]);

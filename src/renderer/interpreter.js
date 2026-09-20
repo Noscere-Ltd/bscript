@@ -209,11 +209,11 @@ class ScriptInterpreter {
             // import * - include all content inline (immediate replacement).
             // Without its comments: a last line that is a comment would
             // swallow whatever follows the import statement on its line.
-            resolved = resolved.replace(imp.full, this.stripComments(importedContent));
+            resolved = resolved.replace(imp.full, () => this.inlineBody(importedContent));
           } else if (imp.macroName) {
             // import macroName - store as named macro for later expansion
             const macroContent = this.extractMacro(importedContent, imp.macroName);
-            this.namedImports[imp.macroName] = this.stripComments(macroContent || '');
+            this.namedImports[imp.macroName] = this.inlineBody(macroContent || '');
             // Remove the import statement
             resolved = resolved.replace(imp.full, '');
           } else if (imp.macroList) {
@@ -221,7 +221,7 @@ class ScriptInterpreter {
             const macros = imp.macroList.split(',').map(m => m.trim());
             macros.forEach(macroName => {
               const macroContent = this.extractMacro(importedContent, macroName);
-              this.namedImports[macroName] = this.stripComments(macroContent || '');
+              this.namedImports[macroName] = this.inlineBody(macroContent || '');
             });
             // Remove the import statement
             resolved = resolved.replace(imp.full, '');
@@ -232,7 +232,7 @@ class ScriptInterpreter {
         }
       } catch (error) {
         // Replace import with error comment
-        resolved = resolved.replace(imp.full, `// Import error: ${error.message}`);
+        resolved = resolved.replace(imp.full, () => `// Import error: ${error.message}`);
         console.error('Import error:', error);
       }
     }
@@ -250,6 +250,12 @@ class ScriptInterpreter {
   }
 
   // Extract a specific macro definition from imported content
+  // An imported body goes in as one line, without comments, so the lines of
+  // the importing script keep their numbers for error marks.
+  inlineBody(text) {
+    return this.stripComments(text).split('\n').map((l) => l.trim()).filter(Boolean).join(' ');
+  }
+
   extractMacro(content, macroName) {
     // Look for @define macroName ... @end blocks
     const defineRegex = new RegExp(`//\\s*@define\\s+${macroName}\\s*\\n([\\s\\S]*?)//\\s*@end`, 'm');
@@ -273,7 +279,7 @@ class ScriptInterpreter {
     for (const [name, code] of Object.entries(this.namedImports)) {
       // Create regex to match the name as a standalone word
       const nameRegex = new RegExp(`\\b${name}\\b`, 'g');
-      expanded = expanded.replace(nameRegex, code);
+      expanded = expanded.replace(nameRegex, () => code);
     }
 
     // Expand LOOP macros: LOOP[n]{body}

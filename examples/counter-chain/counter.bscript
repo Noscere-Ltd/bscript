@@ -1,19 +1,61 @@
 // Counter Contract - Locking Script
 // State: [count] (serialized after OP_RETURN)
 //
-// This contract verifies the preimage and that the input amount is above
-// zero. It does not check the new state: the New State box decides it, so
-// "increment" with an unchanged count passes.
+// The contract checks the preimage, then checks that the spending
+// transaction has one output: this same code, the same amount, and a count
+// that is one more or one less than the count being spent. The script cannot
+// see which method the panel has selected, so either step passes under
+// either name. Any other New State is refused.
 
 // Verify preimage authenticity (OP_PUSH_TX)
 checkPreimage
 
-// Extract the input amount and verify it is above zero
-dup
-extractAmount
-0 greaterThan
-verify
+// Keep hashOutputs and the raw 8-byte amount on the alt stack
+dup extractOutputHash toAltStack
+dup size 52 sub split nip 8 split drop toAltStack
 
-// Script succeeds. Nothing here or in the chain engine checks the count.
-drop
-true
+// scriptCode: after the 104-byte head and a 3-byte length, before the
+// 52-byte tail. The length is 3 bytes because this script is over 252 bytes.
+size 52 sub split drop 107 split nip
+
+// Split the code and its OP_RETURN from the state push.
+// CODE LENGTH: the number below is the compiled length of this file plus one.
+// Any edit to the code changes it. test/counter-chain.test.js reports the
+// right value.
+613 split
+
+// Old count. A state push is OP_0, OP_1NEGATE, OP_1 to OP_16, or a length
+// byte and the number.
+size 1 numEqual if
+  dup 0x00 equal if drop 0 else
+  dup 0x4f equal if drop -1 else
+  bin2num 80 sub endIf endIf
+else
+  1 split nip bin2num
+endIf
+
+// hashOutputs for count + 1
+2dup 1add
+dup 0 numEqual if drop 0x00 else
+dup 1 17 within if 80 add else
+dup -1 numEqual if drop 0x4f else
+size 1 num2bin swap cat endIf endIf endIf
+cat
+size 2 num2bin 0xfd swap cat swap cat
+fromAltStack dup toAltStack swap cat hash256
+
+// hashOutputs for count - 1
+rot rot 1sub
+dup 0 numEqual if drop 0x00 else
+dup 1 17 within if 80 add else
+dup -1 numEqual if drop 0x4f else
+size 1 num2bin swap cat endIf endIf endIf
+cat
+size 2 num2bin 0xfd swap cat swap cat
+fromAltStack dup toAltStack swap cat hash256
+
+// The real hashOutputs has to be one of the two
+fromAltStack drop fromAltStack
+dup rot equal
+rot rot equal
+boolor

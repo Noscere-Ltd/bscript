@@ -364,6 +364,16 @@ Paths are relative to the project file. The contract must be a `.bscript`
 file inside the project's directory. The `unlock` field is kept in the format
 and ignored.
 
+The contract may use `import`, resolved against the contract's own path. An
+import that cannot be read stops the project from loading.
+
+The chain engine does not judge the New State. The contract does. The shipped
+counter rebuilds the one output it expects from its own code, the input
+amount and the old count plus or minus one, and compares the hash with the
+preimage's hashOutputs. A New State that leaves the count unchanged, or moves
+it by more than one, fails. The script cannot see the selected method name, so
+either step passes under either method.
+
 ## Deploying a script
 
 Deploy funds and broadcasts the current script as a locking script on the

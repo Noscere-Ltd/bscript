@@ -280,6 +280,19 @@ test('2-of-2 multisig with two empty signatures is not valid', () => {
   }
 });
 
+// F83. Signatures are checked top first. The top one matches no key, so the
+// check stops before the high-S signature under it is looked at.
+test('multisig does not judge the S value of a signature it never reaches', () => {
+  const stranger = PrivateKey.fromHex('03'.repeat(32));
+  const { ours, spend } = multisigVerdicts(
+    [signUnder(BIP143, { ...context(), prevScriptHex: multisigHex }, { highS: true }),
+      multisigSignature(stranger, 1)], 1);
+  assert.ok(ours.success, ours.error);
+  assert.strictEqual(ours.valid, false);
+  assert.strictEqual(spend.ok, false);
+  assert.doesNotMatch(spend.error, /low S/i);
+});
+
 test('a sighash base type that is not ALL, NONE or SINGLE is refused', () => {
   for (const version of [1, 2]) {
     for (const scope of [0x40, 0x44]) {

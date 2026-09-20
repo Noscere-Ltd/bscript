@@ -114,16 +114,19 @@ function verifyMultiSig({ signaturesHex, pubKeysHex, sighashHex, txContext, requ
       ? TransactionSignature.fromChecksigFormat(Array.from(Buffer.from(hex, 'hex')))
       : null));
 
-    if (requireLowS && signatures.some(sig => sig && !sig.hasLowS())) {
-      return { success: false, error: 'The signature must have a low S value.' };
-    }
-
     let pubKeyIndex = 0;
     let validCount = 0;
 
-    for (const sig of signatures) {
+    for (const [i, sig] of signatures.entries()) {
       // No key can match an empty signature, so the rest cannot either
       if (!sig) break;
+      // Too few keys left for the signatures left: nodes stop here, so a
+      // later signature is never looked at
+      if (signatures.length - i > pubKeys.length - pubKeyIndex) break;
+
+      if (requireLowS && !sig.hasLowS()) {
+        return { success: false, error: 'The signature must have a low S value.' };
+      }
 
       const refused = scopeError(sig.scope, sighashHex, txContext);
       if (refused) {

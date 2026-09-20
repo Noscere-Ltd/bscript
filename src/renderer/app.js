@@ -174,7 +174,7 @@ function setupEventHandlers() {
   document.getElementById('btn-chain-mode').addEventListener('click', function() {
     if (chainModeActive) {
       toggleChainMode(false);
-    } else if (chainEngine.project) {
+    } else if (chainEngine.project && currentFilePath === chainContractPath) {
       toggleChainMode(true);
     } else {
       openChainProject();

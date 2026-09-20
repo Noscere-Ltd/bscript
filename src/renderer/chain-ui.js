@@ -1,5 +1,8 @@
 var chainEngine = new ChainEngine();
 var chainModeActive = false;
+// The contract file of the loaded project. The Chain Mode button goes back
+// into chain mode only while the editor still holds this file.
+var chainContractPath = null;
 
 // The interpreter's transaction context as Settings left it, held while a
 // chain run borrows the interpreter, so the run can put it back
@@ -60,6 +63,7 @@ async function openChainProject() {
     // The editor holds the contract, so Save must write the contract file,
     // not the .bsm.json the dialog picked
     currentFilePath = loadResult.contractPath;
+    chainContractPath = loadResult.contractPath;
     hasUnsavedChanges = false;
     updateWindowTitle();
     clearNewStateInput();

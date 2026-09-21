@@ -24,8 +24,8 @@ default **transaction version 1** that means:
 - the top item is true
 - exactly one item is left (the clean stack rule)
 
-Set the version to 2 in Settings to relax all three, which is what the teaching
-examples below do when they leave several values on the stack.
+Set the version to 2 in Settings to relax the clean stack rule, which is what
+the teaching examples below need when they leave several values on the stack.
 
 ## Step-by-step debugging
 
@@ -127,8 +127,8 @@ One item, true, so this passes at version 1.
 ## Cross-check with a second engine
 
 Press **Cmd/Ctrl + Shift + V** to run the same script through Rúnar's
-`ScriptVM` and compare the two results. The console reports `MATCH`, a
-mismatch, or the reason the two engines cannot be compared.
+`ScriptVM` and compare the two results. The console reports `MATCH`,
+`BOTH FAILED`, `MISMATCH`, or the reason the two engines were not compared.
 
 ## Load an example
 
@@ -163,8 +163,7 @@ add          // stack underflow: add needs two items
 10 5 sub     // 5, not -5: the second item is subtracted from the first
 ```
 
-At version 1 two more failures are common: a push that is not minimally
-encoded, and more than one item left at the end.
+At version 1 one more failure is common: more than one item left at the end.
 
 ## Next steps
 

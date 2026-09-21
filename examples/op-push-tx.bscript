@@ -48,9 +48,9 @@ drop
 dup extractOutpoint
 drop
 
-// inputIndex: which input is being signed (4 bytes → number)
+// outpoint index: which output of the previous transaction is spent (4 bytes → number)
 // Offset: bytes 100-103
-dup extractInputIndex
+dup extractOutpointIndex
 drop
 
 // amount: satoshis in the UTXO being spent (8 bytes → number)

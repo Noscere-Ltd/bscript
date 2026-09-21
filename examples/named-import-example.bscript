@@ -10,20 +10,22 @@ import orOp from './libs/bitwise-ops.bscript'
 
 // Call andOp - this inlines "12 10 and"
 andOp
-// Stack: [8]
+// Stack: [0x08]
 
 verify
+// Stack: []
 
 // Call orOp - this inlines "12 10 or"
 orOp
-// Stack: [8, 14]
+// Stack: [0x0e]
 
 verify
 
 // We can call them multiple times
 andOp
-// Stack: [8, 14, 8]
+// Stack: [0x08]
 
-verify
+// No verify here: it would empty the stack, and a script must end with a
+// true value on it
 
 // The imported code is executed inline each time the name is used

@@ -17,25 +17,34 @@ const SIGHASH_ALL_FORKID = 0x41;
 export class LocalSigner {
     bsvPrivKey;
     privateKeyHex;
+    network;
     /**
      * Create a LocalSigner from a private key.
      *
      * @param keyInput - Either a 64-char hex string (raw 32-byte key) or a
      *                   WIF-encoded private key (Base58Check, starts with 5/K/L).
+     * @param network  - SVSCRIPT change: 'mainnet' (default) or 'testnet'. A
+     *                   testnet signer takes a testnet WIF (starts with c) and
+     *                   returns a testnet address.
      */
-    constructor(keyInput) {
+    constructor(keyInput, network = 'mainnet') {
+        this.network = network;
         if (/^[0-9a-fA-F]{64}$/.test(keyInput)) {
             // Raw hex private key
             this.bsvPrivKey = PrivateKey.fromHex(keyInput);
             this.privateKeyHex = keyInput;
         }
-        else if (/^[5KL][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(keyInput)) {
+        else if (network !== 'testnet' && /^5[1-9A-HJ-NP-Za-km-z]{50}$/.test(keyInput)) {
+            // SVSCRIPT change: @bsv/sdk answers this with "Invalid WIF length"
+            throw new Error('LocalSigner: an uncompressed WIF (starts with 5) is not supported. Use a compressed key (starts with K or L).');
+        }
+        else if ((network === 'testnet' ? /^c[1-9A-HJ-NP-Za-km-z]{51}$/ : /^[5KL][1-9A-HJ-NP-Za-km-z]{50,51}$/).test(keyInput)) {
             // WIF-encoded private key
             this.bsvPrivKey = PrivateKey.fromWif(keyInput);
             this.privateKeyHex = this.bsvPrivKey.toHex();
         }
         else {
-            throw new Error('LocalSigner: expected a 64-char hex private key or a WIF-encoded key (starts with 5, K, or L)');
+            throw new Error('LocalSigner: expected a 64-char hex private key or a ' + network + ' WIF-encoded key (mainnet starts with 5, K, or L; testnet starts with c)');
         }
     }
     async getPublicKey() {
@@ -45,7 +54,7 @@ export class LocalSigner {
     }
     async getAddress() {
         // Bitcoin address = Base58Check( 0x00 + HASH160(pubkey) )
-        return this.bsvPrivKey.toAddress();
+        return this.bsvPrivKey.toAddress(this.network);
     }
     /** Get the raw private key hex (for integration with @bsv/sdk). */
     getPrivateKeyHex() {

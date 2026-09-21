@@ -158,18 +158,4 @@ for (const { name, extra, stoppedBy } of COVENANTS) {
   });
 }
 
-test('a counter-chain transition validates', async () => {
-  const dir = path.join(EXAMPLES, 'counter-chain');
-  const contract = fs.readFileSync(path.join(dir, 'counter.bscript'), 'utf8');
-  const project = JSON.parse(fs.readFileSync(path.join(dir, 'counter.bsm.json'), 'utf8'));
-
-  // The locking script a chain step spends: contract code, OP_RETURN, state.
-  // buildLockingScript in chain.js composes it the same way.
-  const locking = await compile(contract) + '6a' + '51';
-
-  for (const version of [1, 2]) {
-    const ctx = context({ version, lockTime: 0, satoshis: project.satoshis });
-    assert.strictEqual(validate(ctx, locking, preimageOf(ctx, locking)), null,
-      `rejected at transaction version ${version}`);
-  }
-});
+// The counter-chain example has its own file: test/counter-chain.test.js

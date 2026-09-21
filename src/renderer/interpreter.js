@@ -17,16 +17,20 @@ class ScriptInterpreter {
     this.executionHistory = [];
     this.status = 'idle'; // idle, running, success, error
     this.error = null;
+    this.errorLine = undefined;
+    this.errorInstruction = undefined;
     this.breakpoints = new Set();
     this.skipIPIncrement = false; // Flag to prevent double-increment in flow control
     this.condStack = []; // One entry per open if/notIf block: is that branch taken?
+    this.elseUsed = []; // One entry per open if/notIf block: has it had its else?
     this.namedImports = {}; // Store named imports for later expansion
+    this.importErrors = []; // A failed import becomes a comment. The chain engine refuses one.
     this.lastCodeSeparator = null; // Instruction index of the last codeSeparator
 
     // Settings (preserved across resets)
     if (!this.enableSignatures) this.enableSignatures = false;
     if (!this.network) this.network = 'mainnet';
-    if (!this.txVersion) this.txVersion = 1;
+    if (this.txVersion === undefined) this.txVersion = 1;
     // The opcode tests and the differential harness drive the script to the
     // end and read the stack, the same way Spend.step() is used without
     // Spend.validate(). They turn this off; the app never does.
@@ -203,12 +207,14 @@ class ScriptInterpreter {
 
           // Handle different import types
           if (imp.isWildcard) {
-            // import * - include all content inline (immediate replacement)
-            resolved = resolved.replace(imp.full, importedContent);
+            // import * - include all content inline (immediate replacement).
+            // Without its comments: a last line that is a comment would
+            // swallow whatever follows the import statement on its line.
+            resolved = resolved.replace(imp.full, () => this.inlineBody(importedContent));
           } else if (imp.macroName) {
             // import macroName - store as named macro for later expansion
             const macroContent = this.extractMacro(importedContent, imp.macroName);
-            this.namedImports[imp.macroName] = macroContent || '';
+            this.namedImports[imp.macroName] = this.inlineBody(macroContent || '');
             // Remove the import statement
             resolved = resolved.replace(imp.full, '');
           } else if (imp.macroList) {
@@ -216,7 +222,7 @@ class ScriptInterpreter {
             const macros = imp.macroList.split(',').map(m => m.trim());
             macros.forEach(macroName => {
               const macroContent = this.extractMacro(importedContent, macroName);
-              this.namedImports[macroName] = macroContent || '';
+              this.namedImports[macroName] = this.inlineBody(macroContent || '');
             });
             // Remove the import statement
             resolved = resolved.replace(imp.full, '');
@@ -227,7 +233,8 @@ class ScriptInterpreter {
         }
       } catch (error) {
         // Replace import with error comment
-        resolved = resolved.replace(imp.full, `// Import error: ${error.message}`);
+        resolved = resolved.replace(imp.full, () => `// Import error: ${error.message}`);
+        this.importErrors.push(error.message);
         console.error('Import error:', error);
       }
     }
@@ -235,7 +242,22 @@ class ScriptInterpreter {
     return resolved;
   }
 
+  // Drop everything from // to the end of each line. Imported bodies go
+  // through this as well: expandMacros pastes them in after the script's own
+  // comments are gone, so a comment left in one became the token "//".
+  stripComments(text) {
+    return text.split('\n')
+      .map((line) => line.replace(/\/\/.*$/, ''))
+      .join('\n');
+  }
+
   // Extract a specific macro definition from imported content
+  // An imported body goes in as one line, without comments, so the lines of
+  // the importing script keep their numbers for error marks.
+  inlineBody(text) {
+    return this.stripComments(text).split('\n').map((l) => l.trim()).filter(Boolean).join(' ');
+  }
+
   extractMacro(content, macroName) {
     // Look for @define macroName ... @end blocks
     const defineRegex = new RegExp(`//\\s*@define\\s+${macroName}\\s*\\n([\\s\\S]*?)//\\s*@end`, 'm');
@@ -259,7 +281,7 @@ class ScriptInterpreter {
     for (const [name, code] of Object.entries(this.namedImports)) {
       // Create regex to match the name as a standalone word
       const nameRegex = new RegExp(`\\b${name}\\b`, 'g');
-      expanded = expanded.replace(nameRegex, code);
+      expanded = expanded.replace(nameRegex, () => code);
     }
 
     // Expand LOOP macros: LOOP[n]{body}
@@ -274,33 +296,35 @@ class ScriptInterpreter {
       return repetitions.join(' ');
     });
 
-    // Expand xSwap macros: xSwap_n (swap top with nth item)
+    // Expand xSwap macros: xSwap_n swaps the top item with the item n below it
     expanded = expanded.replace(/\bxSwap_(\d+)\b/g, (match, n) => {
       const depth = parseInt(n);
-      if (depth === 0 || depth === 1) return 'swap'; // xSwap_1 is just swap
+      if (depth === 0) return ''; // the top item swapped with itself
+      if (depth === 1) return 'swap';
 
-      // xSwap_n: roll n items to bring nth to top, swap, then roll back
-      const rollForward = depth.toString();
-      const rollBack = (depth - 1).toString();
-      return `${rollForward} roll swap ${rollBack} roll`;
+      // Bring the item to the top and swap, which leaves the old top one
+      // below it. Script has no inverse of roll, so the old top is sunk to
+      // depth n by rolling that depth n times.
+      // ponytail: 2n + 3 tokens. An alt-stack version is no shorter.
+      return `${depth} roll swap` + ` ${depth} roll`.repeat(depth);
     });
 
-    // Expand xDrop macros: xDrop_n (drop nth item)
+    // Expand xDrop macros: xDrop_n drops the item n below the top
     expanded = expanded.replace(/\bxDrop_(\d+)\b/g, (match, n) => {
       const depth = parseInt(n);
       if (depth === 0) return 'drop'; // xDrop_0 is just drop
 
-      // xDrop_n: roll n items to bring nth to top, drop, then reverse remaining
+      // xDrop_n: bring the item to the top and drop it
       const rollForward = depth.toString();
       return `${rollForward} roll drop`;
     });
 
-    // Expand xRot macros: xRot_n (rotate nth item to top)
+    // Expand xRot macros: xRot_n moves the item n below the top to the top
     expanded = expanded.replace(/\bxRot_(\d+)\b/g, (match, n) => {
       const depth = parseInt(n);
-      if (depth === 0 || depth === 1) return ''; // xRot_0/1 is nop
+      if (depth === 0) return ''; // the top item is already there
 
-      // xRot_n: roll n items to bring nth to top
+      // xRot_n: roll the item to the top
       return `${depth} roll`;
     });
 
@@ -315,7 +339,8 @@ class ScriptInterpreter {
     expanded = expanded.replace(/\bextractHashPrevouts\b/g,  '4 split nip 32 split drop');
     expanded = expanded.replace(/\bextractHashSequence\b/g,  '36 split nip 32 split drop');
     expanded = expanded.replace(/\bextractOutpoint\b/g,      '68 split nip 36 split drop');
-    expanded = expanded.replace(/\bextractInputIndex\b/g,    '100 split nip 4 split drop bin2num');
+    // extractInputIndex is the old name. The field is the outpoint's output index.
+    expanded = expanded.replace(/\bextract(InputIndex|OutpointIndex)\b/g, '100 split nip 4 split drop bin2num');
 
     // End-relative extractors (from end of preimage, handles variable scriptCode length)
     expanded = expanded.replace(/\bextractAmount\b/g,        'size 52 sub split nip 8 split drop bin2num');
@@ -344,9 +369,7 @@ class ScriptInterpreter {
     // Comments come out before macros expand. A name mentioned in a comment
     // is not code, and replacing it there put whole macro bodies into the
     // token stream.
-    const withoutComments = importResolved.split('\n')
-      .map((line) => line.replace(/\/\/.*$/, ''))
-      .join('\n');
+    const withoutComments = this.stripComments(importResolved);
 
     // Expand macros before tokenization
     const expandedScript = this.expandMacros(withoutComments);
@@ -375,9 +398,9 @@ class ScriptInterpreter {
   }
 
   // Execute entire script
-  async run(scriptText, initialStack = []) {
+  async run(scriptText, initialStack = [], currentFilePath = null) {
     try {
-      await this.parse(scriptText, initialStack);
+      await this.parse(scriptText, initialStack, currentFilePath);
       this.status = 'running';
 
       while (this.ip < this.instructions.length) {
@@ -456,7 +479,10 @@ class ScriptInterpreter {
         this.mainStack.push(value);
         this.addHistory(instruction, `Push ${value}`);
       } else if (this.isHexLiteral(instruction)) {
-        // Hex literal (0x...)
+        // Hex literal (0x...). Whole bytes only, in the compiler's words.
+        if (instruction.length % 2 !== 0) {
+          throw new Error('Hex literal must have even number of digits: ' + instruction);
+        }
         const bytes = this.parseHex(instruction);
         this.mainStack.push(bytes);
         this.addHistory(instruction, `Push ${instruction}`);
@@ -499,7 +525,7 @@ class ScriptInterpreter {
 
   // Check if token is hex literal
   isHexLiteral(token) {
-    return /^0x[0-9a-fA-F]+$/.test(token);
+    return /^0x[0-9a-fA-F]*$/.test(token);
   }
 
   // Parse number
@@ -738,6 +764,7 @@ class ScriptInterpreter {
       if (invert) taken = !taken;
     }
     this.condStack.push(taken);
+    this.elseUsed.push(false);
     this.addHistory(opcode, `Conditional branch: ${taken}`);
   }
 
@@ -753,6 +780,12 @@ class ScriptInterpreter {
     if (this.condStack.length === 0) {
       throw new Error("Cannot execute 'else' - no matching if");
     }
+    // Since Genesis a node allows one else per if (bitcoin-sv interpreter.cpp,
+    // case OP_ELSE). Spend applies this only when given the Genesis flags.
+    if (this.elseUsed[this.elseUsed.length - 1]) {
+      throw new Error('OP_ELSE may only be used once for each OP_IF or OP_NOTIF after Genesis.');
+    }
+    this.elseUsed[this.elseUsed.length - 1] = true;
     const taken = !this.condStack[this.condStack.length - 1];
     this.condStack[this.condStack.length - 1] = taken;
     this.addHistory('else', taken ? 'Enter else block' : 'Skip else block');
@@ -763,6 +796,7 @@ class ScriptInterpreter {
       throw new Error("Cannot execute 'endIf' - no matching if");
     }
     this.condStack.pop();
+    this.elseUsed.pop();
     this.addHistory('endIf', 'End conditional block');
   }
 
@@ -886,6 +920,7 @@ class ScriptInterpreter {
       if (invert) taken = !taken;
     }
     this.condStack.push(taken);
+    this.elseUsed.push(false);
     this.addHistory(opcode, `Conditional branch: ${taken}`);
   }
 
@@ -1332,7 +1367,9 @@ class ScriptInterpreter {
   // Little-endian, sign-magnitude byte encoding (Bitcoin Script number format)
   op_num2bin() {
     const size = this.toIndex(this.popStack());
-    if (size < 0 || size > ScriptInterpreter.MAX_ELEMENT_SIZE) {
+    // ponytail: no upper bound, the same as Spend after Genesis. A very large
+    // size allocates that much memory.
+    if (size < 0) {
       throw new Error(`num2bin cannot produce ${size} bytes`);
     }
 
@@ -1501,11 +1538,17 @@ class ScriptInterpreter {
 
   async op_checkmultisig() {
     const numPubKeys = this.toIndex(this.popStack());
+    if (numPubKeys < 0 || numPubKeys > 2147483647) {
+      throw new Error('checkMultiSig requires a key count between 0 and 2147483647.');
+    }
     const pubKeys = [];
     for (let i = 0; i < numPubKeys; i++) {
       pubKeys.push(this.popStack());
     }
     const numSigs = this.toIndex(this.popStack());
+    if (numSigs < 0 || numSigs > numPubKeys) {
+      throw new Error('checkMultiSig requires the number of signatures to be no greater than the number of keys.');
+    }
     const sigs = [];
     for (let i = 0; i < numSigs; i++) {
       sigs.push(this.popStack());
@@ -1607,7 +1650,6 @@ class ScriptInterpreter {
 
 // SIGHASH_ALL | SIGHASH_FORKID, the type the OP_PUSH_TX binding pins
 ScriptInterpreter.SIGHASH_ALL_FORKID = 0x41;
-ScriptInterpreter.MAX_ELEMENT_SIZE = 520;
 
 // Export for use in app
 if (typeof module !== 'undefined' && module.exports) {

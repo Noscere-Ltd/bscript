@@ -3,12 +3,14 @@
 //
 // TIP: Use the "Initial Stack" panel on the left to provide input values!
 // Try entering a number like 42, 75, or 150 to see different execution paths.
-import bitwise from './examples/bitwise.bscript'
+//
+// Transaction version: 2
+// The imported bitwise example leaves six items on the stack, and version 1
+// requires exactly one item at the end.
+import bitwise from './bitwise.bscript'
 
 // Duplicate the input for multiple tests
 dup dup
-
-bitwise 
 
 // Test 1: Is it greater than 100?
 100 greaterThan
@@ -36,7 +38,12 @@ else
   endIf
 endIf
 
-// Different paths based on initial value:
-// - 150 → Path A (>100) → returns 1000
-// - 75  → Path B (50-100) → returns 500
-// - 42  → Path C (<=50) → returns 100
+// Different paths based on initial value. Each path verifies its indicator,
+// which removes it, and leaves the input on the stack:
+// - 150 → Path A (>100) → verifies 1000
+// - 75  → Path B (50-100) → verifies 500
+// - 42  → Path C (<=50) → verifies 100
+
+// The imported name inlines the whole of bitwise.bscript here
+bitwise
+// Stack: [input, 0x08, 0x0e, 0x06, 0x14, 0x05, 0xfa]

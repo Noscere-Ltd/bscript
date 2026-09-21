@@ -11,21 +11,30 @@ test('LOOP repeats its body and substitutes the index', async () => {
   assert.deepStrictEqual(await stack('LOOP[3]{1}'), [1, 1, 1]);
 });
 
-test('xSwap_n brings the nth item to the top and puts the old top back', async () => {
+test('xSwap_n swaps the top item with the item n below it', async () => {
+  assert.strictEqual(expand('xSwap_0'), '');
   assert.strictEqual(expand('xSwap_1'), 'swap');
-  assert.strictEqual(expand('xSwap_3'), '3 roll swap 2 roll');
+  assert.strictEqual(expand('xSwap_3'), '3 roll swap 3 roll 3 roll 3 roll');
+  assert.deepStrictEqual(await stack('1 2 xSwap_0'), [1, 2]);
   assert.deepStrictEqual(await stack('1 2 xSwap_1'), [2, 1]);
+  assert.deepStrictEqual(await stack('1 2 3 xSwap_2'), [3, 2, 1]);
+  assert.deepStrictEqual(await stack('1 2 3 4 5 xSwap_2'), [1, 2, 5, 4, 3]);
+  assert.deepStrictEqual(await stack('1 2 3 4 5 xSwap_3'), [1, 5, 3, 4, 2]);
+  assert.deepStrictEqual(await stack('1 2 3 4 5 xSwap_4'), [5, 2, 3, 4, 1]);
 });
 
 test('xDrop_n drops the nth item', async () => {
   assert.strictEqual(expand('xDrop_0'), 'drop');
   assert.strictEqual(expand('xDrop_2'), '2 roll drop');
   assert.deepStrictEqual(await stack('1 2 3 xDrop_2'), [2, 3]);
+  assert.deepStrictEqual(await stack('1 2 5 4 3 xDrop_2'), [1, 2, 4, 3]);
 });
 
 test('xRot_n rotates the nth item to the top', async () => {
-  assert.strictEqual(expand('xRot_1'), '');
+  assert.strictEqual(expand('xRot_0'), '');
+  assert.strictEqual(expand('xRot_1'), '1 roll');
   assert.strictEqual(expand('xRot_3'), '3 roll');
+  assert.deepStrictEqual(await stack('1 2 xRot_1'), [2, 1]);
   assert.deepStrictEqual(await stack('1 2 3 4 xRot_3'), [2, 3, 4, 1]);
 });
 
@@ -57,6 +66,7 @@ test('the fixed-offset extractors read from the start of the preimage', async ()
   assert.strictEqual(await top('extractHashSequence', [PREIMAGE]), '0x' + '11'.repeat(32));
   assert.strictEqual(await top('extractOutpoint', [PREIMAGE]), '0x' + 'aa'.repeat(32) + '01000000');
   assert.strictEqual(await top('extractInputIndex', [PREIMAGE]), 1);
+  assert.strictEqual(await top('extractOutpointIndex', [PREIMAGE]), 1);
 });
 
 test('the end-relative extractors survive a variable-length scriptCode', async () => {

@@ -9,8 +9,10 @@
 //   <signature>
 //   <pubkey>
 //
-// In simulated mode, set initial stack to any two values:
+// Simulated mode skips the signature check only. The hash check is real, so
+// the pubkey must hash160 to the hash below. This stack fails at equalVerify:
 //   0xdeadbeef 0xcafebabe
+// To pass, replace the hash below with the hash160 of the pubkey you supply.
 //
 // The script flow:
 //   [sig pubkey] → dup → [sig pubkey pubkey]

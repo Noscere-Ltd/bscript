@@ -54,6 +54,43 @@ function planVerification(scriptHex, options) {
   return { substitutePreimage: hasBinding, compare: true, reason: null };
 }
 
+// The verdict, once both engines have run.
+//
+// Comparing success flags alone called two different failures a MATCH, and
+// two successes with different final stacks a MATCH too. Stacks are arrays of
+// hex strings, bottom to top.
+// Returns { verdict: 'MATCH' | 'MISMATCH' | 'BOTH_FAILED', message }.
+function verifyVerdict(local, vm) {
+  if (local.success && vm.success) {
+    var localStack = local.stackHex.join(' ').toLowerCase();
+    var vmStack = vm.stackHex.join(' ').toLowerCase();
+    if (localStack === vmStack) {
+      return { verdict: 'MATCH', message: 'MATCH - Both interpreters succeed with the same final stack' };
+    }
+    return {
+      verdict: 'MISMATCH',
+      message: 'MISMATCH - Both succeed but the final stacks differ. Local: [' +
+        localStack + '] ScriptVM: [' + vmStack + ']'
+    };
+  }
+
+  if (!local.success && !vm.success) {
+    // Two failures agree on nothing but the fact of failing, so say why each
+    // failed and leave the judgement to the reader
+    return {
+      verdict: 'BOTH_FAILED',
+      message: 'BOTH FAILED - Local: ' + local.error + ' | ScriptVM: ' + vm.error
+    };
+  }
+
+  return {
+    verdict: 'MISMATCH',
+    message: 'MISMATCH - ' + (local.success
+      ? 'Local succeeds, ScriptVM fails: ' + vm.error
+      : 'ScriptVM succeeds, local fails: ' + local.error)
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { planVerification };
+  module.exports = { planVerification, verifyVerdict };
 }

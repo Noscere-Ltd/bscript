@@ -113,15 +113,21 @@ judged under. It changes behaviour, not just a displayed number.
 
 **Version 1** applies the strict rules:
 
-- pushes must use the smallest encoding that holds the data
 - numbers must not carry a byte they do not need
 - signatures must be low-S
 - `checkMultiSig` must leave a null dummy (NULLDUMMY)
-- unlocking scripts must be push-only
 - exactly one item may remain on the stack
-- a signature may not use the Chronicle sighash type (bit 0x20)
 
-**Version 2 and above** relax all seven.
+**Version 2 and above** relax all four.
+
+Two more version 1 consensus rules cannot be broken in SVSCRIPT, so the
+application has no check for them. The compiler always emits the smallest push
+encoding. The only unlocking data the application supplies is the initial
+stack, and that is always pushes.
+
+The Chronicle sighash type (bit 0x20) does not follow this setting. With a
+transaction context, SVSCRIPT rejects such a signature when the pasted
+transaction has version 1. With a sighash context, it does not reject it.
 
 Use version 1 when you want to know whether a script would be accepted on
 chain. Use version 2 when you are exploring, teaching, or deliberately leaving
@@ -132,8 +138,8 @@ working values on the stack.
 ## Signatures
 
 By default `checkSig`, `checkSigVerify`, `checkMultiSig` and
-`checkMultiSigVerify` are **simulated**. They check that the signature is
-shaped like a signature and succeed. This lets you test the logic of a script
+`checkMultiSigVerify` are **simulated**. Any signature that is not empty
+passes, and an empty signature fails. This lets you test the logic of a script
 without building a transaction.
 
 To check signatures for real, turn on **Settings > Signature Verification** and
@@ -150,15 +156,16 @@ previous output's locking script and its satoshi value. SVSCRIPT computes the
 sighash itself. Press Apply Context.
 
 **Preimage.** Fill in the same four fields and press **Compute Preimage**. The
-panel shows the preimage and its signature, and **Inject to Stack** puts the
-preimage onto the initial stack for a covenant to read.
+panel shows the preimage and its signature. **Inject to Stack** replaces the
+initial stack with the signature and then the preimage, for a covenant to read.
 
 Preimage mode is a calculator, not a context. **Apply Context does nothing in
 preimage mode** — it applies only sighash and transaction mode. To have
 signatures checked for real while working with a preimage, apply a sighash or
 transaction context as well.
 
-**Clear Context** removes the context and empties the input fields.
+**Clear Context** removes the context and empties the sighash and transaction
+fields. It keeps the preimage fields.
 
 ![The three transaction context modes in Settings](docs/images/signature-context.png)
 
@@ -166,8 +173,11 @@ transaction context as well.
 
 **Cmd/Ctrl + Shift + V**, or the Verify button, compiles the script and runs it
 through Rúnar's `ScriptVM` as well as the built-in interpreter, then compares
-the two verdicts. Two independent implementations agreeing is much stronger
-evidence than one implementation succeeding.
+the two verdicts and the two final stacks. Two independent implementations
+agreeing is much stronger evidence than one implementation succeeding.
+
+Verify passes the Transaction Version setting to the `ScriptVM`. At version 1
+both engines apply the strict encoding rules and the clean stack rule.
 
 The `ScriptVM` is vendored under `src/vendor/runar`, so Verify needs no setup
 beyond `npm install`.
@@ -181,12 +191,17 @@ beyond `npm install`.
 Local interpreter: SUCCESS | Stack: [1]
 Rúnar ScriptVM:    SUCCESS | Stack: [01]
 ScriptVM stats: 351 ops executed, max stack depth: 7
-Result: MATCH - Both interpreters agree
+Result: MATCH - Both interpreters succeed with the same final stack
 ```
 
-- **MATCH** — both engines reached the same verdict.
-- **MISMATCH** — they disagree. The interpreter is the one to suspect; the
-  ScriptVM is the reference.
+- **MATCH** — both engines succeed and leave the same final stack.
+- **BOTH FAILED** — both engines fail. The line gives the reason from each
+  engine, so you can see whether they failed for the same cause.
+- **MISMATCH** — one engine succeeds and the other fails, or both succeed with
+  different final stacks. The interpreter is the one to suspect; the ScriptVM
+  is the reference.
+- **The script does not compile, so nothing was compared: ...** — the script
+  has an error, and neither engine ran it.
 - **Not compared: ...** — the comparison would have been meaningless, and the
   reason says why.
 
@@ -251,7 +266,7 @@ leaves the preimage on the stack, `dup` before all but the last read:
 | `extractHashPrevouts` | hashPrevouts, 32 bytes |
 | `extractHashSequence` | hashSequence, 32 bytes |
 | `extractOutpoint` | the outpoint, 36 bytes |
-| `extractInputIndex` | the input index, as a number |
+| `extractOutpointIndex` (old name `extractInputIndex`) | the output index in the outpoint (preimage bytes 100 to 104), as a number. This is not the index of the input in the spending transaction. |
 | `extractAmount` | the input amount in satoshis, as a number |
 | `extractSequence` | nSequence, as a number |
 | `extractOutputHash` | hashOutputs, 32 bytes |
@@ -288,8 +303,8 @@ preimage is substituted and the binding is enforced.
 ## Chain mode
 
 Chain mode steps a stateful contract through its methods. The contract's state
-is stored after an `OP_RETURN` in the locking script, and each method has an
-unlocking script that moves the state from one value to the next.
+is stored after an `OP_RETURN` in the locking script, and each method is a
+spend that moves the state from one value to the next.
 
 **The chain panel simulates transitions locally. Nothing is broadcast.** The
 txid it shows is provisional until the transaction is signed and broadcast for
@@ -305,8 +320,10 @@ every step.
    toggles between the two panels.
 2. The console lists the project's state fields and methods.
 3. Pick a method, fill in its parameters, and set the new state values.
-4. Press Run. The contract executes against the unlocking script the method
-   supplies.
+4. Press Run. The contract executes with the method's parameters and the
+   preimage of the spending transaction on the stack. The `unlock` file a
+   method names is not executed. If the New State box holds invalid JSON, the
+   transition stops and the console reports the error.
 5. On success the chain advances: the new state becomes current and the step
    count increases. On failure the console reports why and the state does not
    move.
@@ -320,6 +337,10 @@ pays no fee and its txid is provisional.
 
 A method marked terminal ends the chain: its transaction carries no output, so
 there is nothing left to spend. Reset to continue.
+
+In chain mode, Save writes the contract file. The chain runs the contract as it
+was when the project loaded. To run an edited contract, save it and open the
+project again. Until then, Run refuses and the console says why.
 
 ### The project file
 
@@ -339,24 +360,43 @@ there is nothing left to spend. Reset to continue.
 }
 ```
 
-Paths are relative to the project file.
+Paths are relative to the project file. The contract must be a `.bscript`
+file inside the project's directory. The `unlock` field is kept in the format
+and ignored.
+
+The contract may use `import`, resolved against the contract's own path. An
+import that cannot be read stops the project from loading.
+
+The chain engine does not judge the New State. The contract does. The shipped
+counter rebuilds the one output it expects from its own code, the input
+amount and the old count plus or minus one, and compares the hash with the
+preimage's hashOutputs. A New State that leaves the count unchanged, or moves
+it by more than one, fails. The script cannot see the selected method name, so
+either step passes under either method.
 
 ## Deploying a script
 
 Deploy funds and broadcasts the current script as a locking script on the
-selected network.
+selected network. The networks are mainnet and testnet. Settings > Bitcoin
+Network always shows the choice, and the Deploy panel shows the selected
+network.
 
-**This spends real coins.** On mainnet the transaction is broadcast the moment
-you press Deploy. There is no confirmation step and no undo. Select testnet in
-Settings > Bitcoin Network while you are learning.
+**This spends real coins.** On mainnet, Deploy asks for confirmation before it
+broadcasts. There is no undo after that. Select testnet in Settings > Bitcoin
+Network while you are learning.
+
+The WIF must match the network. A testnet WIF starts with `c`. A mainnet WIF
+starts with `K` or `L`. WIFs that start with `5` (uncompressed keys) are not
+supported.
 
 ![The Deploy panel](docs/images/deploy.png)
 
 1. Open **Deploy**.
 2. Paste a funding WIF. The address derives from it and the balance loads.
 3. Enter the amount to lock. The minimum is 1 satoshi.
-4. Press Deploy. The current editor contents are compiled to a locking script,
-   funded and broadcast.
+4. Press Deploy. The current editor contents are compiled to a locking script.
+   Deploy refuses a script that compiles to nothing. On mainnet, confirm the
+   dialog. The transaction is then funded and broadcast.
 5. On success the txid appears with a WhatsOnChain link, and the balance
    refreshes.
 
@@ -384,6 +424,10 @@ extractors, and `LOOP[n]{body}`, which unrolls at compile time. There is no
 runtime loop in Bitcoin Script, and the macro does not add one; it writes the
 body out `n` times.
 
+`xSwap_n` swaps the top item with the item `n` below it. `xRot_n` moves the
+item `n` below the top to the top. `xDrop_n` drops the item `n` below the top.
+`xSwap_0` and `xRot_0` do nothing.
+
 **Imports.** Wildcard (`import * from './libs/x.bscript'`), named
 (`import name from './libs/x.bscript'`), and multiple named
 (`import { a, b } from './libs/x.bscript'`). A library marks a named block with
@@ -399,18 +443,22 @@ The in-app Help panel has the full syntax with examples.
 | `Script failed: the stack is empty at the end of the script` | Nothing was left to judge. |
 | `Script failed: the top stack item is false` | The script ran but evaluated to false. |
 | `Script failed: N items left on the stack, and version 1 requires exactly one` | The clean stack rule. Reduce to one item or use version 2. |
-| `The signature hash type is invalid before Chronicle` | The signature's sighash byte sets 0x20, which is only valid on version 2 and above. |
+| `The signature hash type is invalid before Chronicle` | The signature's sighash byte sets 0x20, and the transaction pasted into the context has version 1. The Transaction Version setting does not change this. |
 | `Initial stack item "..." is not a decimal number or 0x-prefixed hex` | Fix the item or remove it. Everything else still loads. |
 | `Preimage NOT verified: no transaction context` | `checkPreimage` was a no-op. Apply a context, or press Verify. |
 | `Not compared: this script checks a signature that the simulator only pretends to verify` | Verify declined a meaningless comparison. Turn on signature verification with a real signature. |
 | `Rúnar ScriptVM not available` | The vendored `ScriptVM` failed to load. See `src/vendor/runar/README.md`. |
 | `Minimum 1 satoshi` | Deploy will not broadcast an output below 1 satoshi. |
-| `Result: MISMATCH - Interpreters disagree!` | The ScriptVM is the reference. Treat the interpreter as wrong and report it. |
+| `Result: MISMATCH - ...` | One engine succeeds and the other fails, or the final stacks differ. The ScriptVM is the reference. Treat the interpreter as wrong and report it. |
+| `Result: BOTH FAILED - Local: ... \| ScriptVM: ...` | Both engines reject the script. Compare the two reasons. |
+| `The script does not compile, so nothing was compared` | Verify found a compile error. Fix the script and press Verify again. |
+| `OP_ELSE may only be used once for each OP_IF or OP_NOTIF after Genesis.` | An `if` has a second `else`. BSV nodes reject this since Genesis. |
+| `Refusing to deploy: the compiled script is empty or is not hex.` or `Nothing to deploy: the script is empty` | Deploy does not broadcast an empty script. |
 
 ### A script that passes at version 2 and fails at version 1
 
-Almost always the clean stack rule, a push that is not minimally encoded, or a
-number carrying a byte it does not need. The error message names which.
+Almost always the clean stack rule, or a number carrying a byte it does not
+need. The error message names which.
 
 ### checkSig succeeds when it should not
 

@@ -14,7 +14,8 @@ function splitStackInput(text) {
 // Returns { value, type } for an accepted item, or { error } naming the item.
 function parseStackItem(item) {
   if (/^-?\d+$/.test(item)) {
-    return { value: Number(item), type: 'number' };
+    // BigInt, not Number: a script number above 2^53 has to arrive intact
+    return { value: BigInt(item), type: 'number' };
   }
   if (/^0x([0-9a-fA-F]{2})*$/.test(item)) {
     return { value: item, type: 'hex' };

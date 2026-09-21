@@ -174,7 +174,7 @@ function setupEventHandlers() {
   document.getElementById('btn-chain-mode').addEventListener('click', function() {
     if (chainModeActive) {
       toggleChainMode(false);
-    } else if (chainEngine.project) {
+    } else if (chainEngine.project && currentFilePath === chainContractPath) {
       toggleChainMode(true);
     } else {
       openChainProject();
@@ -305,14 +305,22 @@ async function resolveInitialStack() {
   return getInitialStackValues();
 }
 
-// Run entire script
+// Run entire script. run-lock.js lets one run through at a time.
 async function runScript() {
+  await runExclusive(runScriptNow);
+}
+
+async function runScriptNow() {
   const script = editor.getValue();
 
   if (!script.trim()) {
     logToConsole('No script to execute', 'warning');
     return;
   }
+
+  // A full run replaces any step run in progress, so the badge and the next
+  // Step must not carry on as if it were still stepping
+  executionMode = 'idle';
 
   try {
     logToConsole('Executing script...', 'info');
@@ -325,7 +333,7 @@ async function runScript() {
       logToConsole(`Initial stack: [${initialStack.join(', ')}]`, 'info');
     }
 
-    const result = await interpreter.run(script, initialStack);
+    const result = await interpreter.run(script, initialStack, currentFilePath);
 
     if (result.success) {
       logToConsole('Script executed successfully', 'success');
@@ -354,11 +362,25 @@ async function runScript() {
       interpreter.errorInstruction || 'unknown',
       interpreter.errorLine
     );
+  } finally {
+    // In chain mode the run borrowed the transaction context
+    restoreChainContext();
   }
 }
 
-// Step through script one instruction at a time
+// Step through script one instruction at a time. In chain mode the step run
+// borrows the transaction context until it goes back to idle.
 async function stepScript() {
+  await runExclusive(async () => {
+    try {
+      await stepOnce();
+    } finally {
+      if (executionMode === 'idle') restoreChainContext();
+    }
+  });
+}
+
+async function stepOnce() {
   if (executionMode === 'idle') {
     // Start stepping mode
     const script = editor.getValue();
@@ -434,6 +456,7 @@ async function stepScript() {
 function resetScript() {
   interpreter.reset();
   executionMode = 'idle';
+  restoreChainContext();
   clearDecorations();
   hideErrorToast(); // Clear any error messages
   updateUI();
@@ -496,21 +519,32 @@ function switchView(view) {
 
 // Verify script against Rúnar ScriptVM
 async function verifyScript() {
+  await runExclusive(verifyScriptNow);
+}
+
+async function verifyScriptNow() {
   const script = editor.getValue();
   if (!script.trim()) {
     logToConsole('No script to verify', 'warning');
     return;
   }
 
+  let restoreContext = null;
   try {
     logToConsole('Verifying script against Rúnar ScriptVM...', 'info');
 
-    // Step 1: Compile, and decide what the comparison can honestly claim
-    const tempInterpreter = new ScriptInterpreter();
-    await tempInterpreter.parse(script, [], currentFilePath);
-    const scriptHex = compileInstructionsToHex(tempInterpreter.instructions);
+    // Step 1: Compile, and decide what the comparison can honestly claim.
+    // A script that does not compile has nothing to hand the ScriptVM.
+    let scriptHex;
+    try {
+      const tempInterpreter = new ScriptInterpreter();
+      await tempInterpreter.parse(script, [], currentFilePath);
+      scriptHex = compileInstructionsToHex(tempInterpreter.instructions);
+    } catch (error) {
+      logToConsole(`The script does not compile, so nothing was compared: ${error.message}`, 'error');
+      return;
+    }
 
-    let restoreContext = null;
     const plan = planVerification(scriptHex, {
       bindingHex: CHECK_PREIMAGE_BINDING_HEX,
       substitutePreimage: settings.substitutePreimage,
@@ -552,14 +586,16 @@ async function verifyScript() {
         'because the binding rejects any other one in both engines', 'info');
     }
 
-    // Step 3: Run through our interpreter
-    const localResult = await interpreter.run(script, initialStack);
+    // Step 3: Run through our interpreter. This ends any step run in
+    // progress, so the next Step starts a fresh one.
+    executionMode = 'idle';
+    const localResult = await interpreter.run(script, initialStack, currentFilePath);
     const localStack = [...interpreter.mainStack];
     const localSuccess = localResult.success;
 
     // Step 4: Same stack to the ScriptVM, converted the way the interpreter does
     const initialStackHex = initialStack.map(v => interpreter.toHexString(v));
-    const vmResult = await window.runar.verifyScript(scriptHex, initialStackHex);
+    const vmResult = await window.runar.verifyScript(scriptHex, initialStackHex, settings.txVersion);
 
     if (vmResult.error && vmResult.error.includes('not available')) {
       logToConsole('Rúnar ScriptVM not available: ' + vmResult.error, 'error');
@@ -579,23 +615,27 @@ async function verifyScript() {
       logToConsole(`ScriptVM error: ${vmResult.vmError}`, 'warning');
     }
 
-    // Compare success/failure
-    if (localSuccess === vmResult.success) {
-      logToConsole('Result: MATCH - Both interpreters agree', 'success');
-    } else {
-      logToConsole('Result: MISMATCH - Interpreters disagree!', 'error');
-    }
+    // Compare verdicts and final stacks
+    const outcome = verifyVerdict(
+      { success: localSuccess, error: localResult.error, stackHex: localStack.map(v => interpreter.toHexString(v)) },
+      { success: vmResult.success, error: vmResult.vmError, stackHex: vmResult.stack });
+    logToConsole('Result: ' + outcome.message,
+      { MATCH: 'success', BOTH_FAILED: 'warning', MISMATCH: 'error' }[outcome.verdict]);
 
     // Reset interpreter state (verification is non-destructive to UI)
     interpreter.reset();
-    if (restoreContext) {
-      interpreter.txContext = restoreContext.context;
-      interpreter.txContextMode = restoreContext.mode;
-    }
     updateUI();
 
   } catch (error) {
     logToConsole(`Verification error: ${error.message}`, 'error');
+  } finally {
+    // Here, not above: the early return and a thrown error give it back too
+    if (restoreContext) {
+      interpreter.txContext = restoreContext.context;
+      interpreter.txContextMode = restoreContext.mode;
+    }
+    // Only matters when Verify cut a chain-mode step run short
+    if (executionMode === 'idle') restoreChainContext();
   }
 }
 
@@ -778,8 +818,10 @@ function highlightCurrentInstruction() {
   if (lineNumber !== undefined && lineNumber !== null) {
     const monacoLine = lineNumber + 1; // Monaco uses 1-based line numbers
 
-    // Highlight only the current line with a subtle left border
-    const decorations = editor.deltaDecorations([], [
+    // Highlight only the current line with a subtle left border. The previous
+    // step's ids go in so this one replaces it: passing [] left every earlier
+    // line marked, and Reset could only clear the last.
+    const decorations = editor.deltaDecorations(editor._currentDecorations || [], [
       {
         range: new monaco.Range(monacoLine, 1, monacoLine, 1),
         options: {
@@ -835,6 +877,7 @@ async function newFile() {
   if (!(await confirmUnsavedChanges())) return;
 
   editor.setValue(getDefaultScript());
+  toggleChainMode(false);
   currentFilePath = null;
   hasUnsavedChanges = false;
   interpreter.reset();
@@ -857,6 +900,7 @@ async function openFile() {
 
     if (result.success) {
       editor.setValue(result.content);
+      toggleChainMode(false);
       currentFilePath = result.filePath;
       hasUnsavedChanges = false;
       interpreter.reset();
@@ -986,10 +1030,6 @@ function hideSettings() {
 function toggleSignatures(event) {
   settings.enableSignatures = event.target.checked;
 
-  // Show/hide network settings
-  const networkSettings = document.getElementById('network-settings');
-  networkSettings.style.display = settings.enableSignatures ? 'block' : 'none';
-
   // Show/hide transaction context settings
   const txContextSettings = document.getElementById('tx-context-settings');
   txContextSettings.style.display = settings.enableSignatures ? 'block' : 'none';
@@ -1005,7 +1045,6 @@ function toggleSignatures(event) {
   logToConsole(`Signature verification ${status}`, 'info');
 
   if (settings.enableSignatures) {
-    logToConsole(`Network set to: ${settings.network}`, 'info');
     logToConsole('Note: checkSig/checkMultiSig require transaction context', 'warning');
   }
 }
@@ -1017,6 +1056,10 @@ function changeNetwork(event) {
   if (interpreter) {
     interpreter.network = settings.network;
   }
+
+  // The Deploy panel shows the network, and the address format depends on it
+  document.getElementById('deploy-network-value').textContent = settings.network;
+  onDeployWifChange();
 
   logToConsole(`Network changed to: ${settings.network}`, 'info');
 }
@@ -1279,7 +1322,7 @@ async function onDeployWifChange() {
   }
 
   try {
-    const result = await window.runar.getAddress(wif);
+    const result = await window.runar.getAddress(wif, settings.network);
     if (result.success) {
       document.getElementById('deploy-address-value').textContent = result.address;
       addressDisplay.style.display = 'flex';
@@ -1463,37 +1506,18 @@ function appendAIMessage(role, content, isLoading) {
   return msgEl;
 }
 
-function renderAIMarkdown(text) {
-  // Escape the whole reply first, then add the formatting tags. Escaping only
-  // the code spans left every other part of the reply able to inject markup.
-  let html = escapeHtml(text);
-
-  // Code blocks (```...```)
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => `<pre><code>${code}</code></pre>`);
-
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, (_, code) => `<code>${code}</code>`);
-
-  // Bold
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-
-  // Italic
-  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-
-  // Line breaks -> paragraphs
-  html = html.split('\n\n').map(para => {
-    if (para.match(/^<(pre|ul|ol|h[1-3])/)) return para;
-    return `<p>${para.replace(/\n/g, '<br>')}</p>`;
-  }).join('');
-
-  return html;
-}
+// renderAIMarkdown lives in ai-markdown.js so node can test it
 
 // ---------------------------------------------------------------------------
 // Deploy Panel Functions (continued)
 // ---------------------------------------------------------------------------
 
+let deployInFlight = false;
+
 async function executeDeployment() {
+  // A second click while the first is still broadcasting would spend twice
+  if (deployInFlight) return;
+
   const wif = document.getElementById('deploy-wif').value.trim();
   const satoshis = parseInt(document.getElementById('deploy-satoshis').value);
   const statusEl = document.getElementById('deploy-status');
@@ -1511,6 +1535,10 @@ async function executeDeployment() {
     return;
   }
 
+  const deployBtn = document.getElementById('btn-deploy-execute');
+  deployInFlight = true;
+  deployBtn.disabled = true;
+
   // Compile current script to hex
   try {
     statusEl.textContent = 'Compiling script...';
@@ -1520,6 +1548,20 @@ async function executeDeployment() {
     const tempInterpreter = new ScriptInterpreter();
     await tempInterpreter.parse(script, [], currentFilePath);
     const scriptHex = compileInstructionsToHex(tempInterpreter.instructions);
+
+    if (!scriptHex) {
+      statusEl.textContent = 'Nothing to deploy: the script is empty';
+      statusEl.className = 'settings-status visible error';
+      return;
+    }
+
+    // ponytail: native confirm() is enough for the one irreversible action
+    if (settings.network === 'mainnet' &&
+        !confirm(`Deploy to MAINNET?\n\nThis broadcasts a real transaction locking ${satoshis} ` +
+          `satoshis in a ${scriptHex.length / 2}-byte script. It cannot be undone.`)) {
+      statusEl.textContent = 'Deployment cancelled';
+      return;
+    }
 
     statusEl.textContent = 'Deploying to ' + settings.network + '...';
 
@@ -1558,6 +1600,9 @@ async function executeDeployment() {
     statusEl.textContent = 'Error: ' + err.message;
     statusEl.className = 'settings-status visible error';
     logToConsole('Deployment error: ' + err.message, 'error');
+  } finally {
+    deployInFlight = false;
+    deployBtn.disabled = false;
   }
 }
 
@@ -1595,13 +1640,9 @@ async function computePreimage() {
   statusEl.className = 'settings-status visible';
 
   try {
-    // Find OP_CODESEPARATOR offset in the locking script (byte 0xab)
-    let codeSeparatorIndex;
-    for (let i = 0; i < lockingScriptHex.length; i += 2) {
-      if (lockingScriptHex.substr(i, 2) === 'ab') {
-        codeSeparatorIndex = i / 2;
-      }
-    }
+    // Find the last OP_CODESEPARATOR in the locking script, stepping over
+    // push data: a 0xab byte inside a push is not a separator
+    const codeSeparatorIndex = lastCodeSeparatorIndex(hexToBytes(lockingScriptHex));
 
     const result = await window.runar.computePreimage({
       txHex,

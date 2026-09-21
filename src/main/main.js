@@ -1,9 +1,12 @@
-const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const fs = require('fs').promises;
-const https = require('https');
 const { createMenu } = require('./menu');
 const { toHashBuffer } = require('./hash-input');
+const { makeApiRequest } = require('./api-request');
+const { resolveProjectFile } = require('./chain-paths');
+const { deployScript, assertNetwork } = require('./deploy');
 
 // Lazy load BSV SDK modules when needed (loaded on first use)
 // This avoids potential conflicts with Electron's module loading
@@ -57,11 +60,25 @@ function createWindow() {
     show: false
   });
 
+  // The preload bridge attaches to whatever page this window loads, so the
+  // window never leaves the app's own page.
+  const indexPath = path.join(__dirname, '../renderer/index.html');
+  const indexUrl = pathToFileURL(indexPath).href;
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url.split('#')[0] !== indexUrl) event.preventDefault();
+  });
+  // A child window would inherit the preload. The one target=_blank link (the
+  // deploy explorer link) opens in the system browser instead.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://')) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
   // Load the index.html
-  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  mainWindow.loadFile(indexPath);
 
   // Set up native menu
-  const menu = createMenu(mainWindow);
+  const menu = createMenu();
   Menu.setApplicationMenu(menu);
 
   // Show window when ready to avoid visual flash
@@ -137,9 +154,6 @@ ipcMain.handle('load-file', async (event) => {
     lastUsedDirectory = path.dirname(filePath);
     grantPath(filePath);
 
-    // Add to recent documents
-    app.addRecentDocument(filePath);
-
     return {
       success: true,
       content: content,
@@ -187,9 +201,6 @@ ipcMain.handle('save-file', async (event, { content, filePath }) => {
 
     // Remember this directory for next time
     lastUsedDirectory = path.dirname(savePath);
-
-    // Add to recent documents
-    app.addRecentDocument(savePath);
 
     return {
       success: true,
@@ -289,8 +300,8 @@ ipcMain.handle('bsv-hash160', async (event, data) => {
 // These run in the main process where Node modules are available
 
 const { sighashFor, verifySig, verifyMultiSig } = require('./signature');
-const { pushDataHex } = require('../shared/push-data');
 const { preimageForScript } = require('./verify-preimage');
+const { runInVm } = require('./vm-verify');
 
 ipcMain.handle('bsv-verify-sig', async (event, params) => verifySig(params));
 
@@ -346,35 +357,10 @@ ipcMain.handle('runar-verify-preimage', async (event, { scriptHex }) => {
   }
 });
 
-ipcMain.handle('runar-verify-script', async (event, { scriptHex, initialStackHex }) => {
+ipcMain.handle('runar-verify-script', async (event, params) => {
   try {
-    const { ScriptVM, hexToBytes, bytesToHex } = await getRunarTesting();
-
-    // Build unlocking script from initial stack values (push each as data)
-    let unlockingHex = '';
-    for (const itemHex of initialStackHex || []) {
-      unlockingHex += pushDataHex(itemHex || '');
-    }
-
-    const vm = new ScriptVM();
-    let result;
-
-    if (unlockingHex) {
-      const unlockingScript = hexToBytes(unlockingHex);
-      const lockingScript = hexToBytes(scriptHex);
-      result = vm.execute(unlockingScript, lockingScript);
-    } else {
-      result = vm.executeHex(scriptHex);
-    }
-
-    return {
-      success: result.success,
-      stack: result.stack.map(bytes => bytesToHex(bytes)),
-      altStack: result.altStack.map(bytes => bytesToHex(bytes)),
-      vmError: result.error || null,
-      opsExecuted: result.opsExecuted,
-      maxStackDepth: result.maxStackDepth
-    };
+    // src/main/vm-verify.js runs the VM under the rules of params.txVersion
+    return runInVm(await getRunarTesting(), params || {});
   } catch (error) {
     return { success: false, stack: [], altStack: [], vmError: error.message, error: error.message };
   }
@@ -384,10 +370,11 @@ ipcMain.handle('runar-verify-script', async (event, { scriptHex, initialStackHex
 // Rúnar SDK Deployment
 // ---------------------------------------------------------------------------
 
-ipcMain.handle('runar-get-address', async (event, { wif }) => {
+ipcMain.handle('runar-get-address', async (event, { wif, network }) => {
   try {
+    assertNetwork(network);
     const { LocalSigner } = await getRunarSdk();
-    const signer = new LocalSigner(wif);
+    const signer = new LocalSigner(wif, network);
     const address = await signer.getAddress();
     const pubKey = await signer.getPublicKey();
     return { success: true, address, pubKey };
@@ -398,8 +385,9 @@ ipcMain.handle('runar-get-address', async (event, { wif }) => {
 
 ipcMain.handle('runar-get-balance', async (event, { address, network }) => {
   try {
+    assertNetwork(network);
     const { WhatsOnChainProvider } = await getRunarSdk();
-    const provider = new WhatsOnChainProvider(network || 'mainnet');
+    const provider = new WhatsOnChainProvider(network);
     const utxos = await provider.getUtxos(address);
     const total = utxos.reduce((sum, u) => sum + u.satoshis, 0);
     return { success: true, balance: total, utxoCount: utxos.length };
@@ -408,54 +396,13 @@ ipcMain.handle('runar-get-balance', async (event, { address, network }) => {
   }
 });
 
-ipcMain.handle('runar-deploy-script', async (event, { wif, scriptHex, satoshis, network }) => {
+ipcMain.handle('runar-deploy-script', async (event, params) => {
   try {
-    const { LocalSigner, WhatsOnChainProvider, buildDeployTransaction, selectUtxos, buildP2PKHScript } = await getRunarSdk();
-    const { Transaction, UnlockingScript } = getBsvSdk();
-
-    const signer = new LocalSigner(wif);
-    const address = await signer.getAddress();
-    const provider = new WhatsOnChainProvider(network || 'mainnet');
-
-    // Get UTXOs
-    const allUtxos = await provider.getUtxos(address);
-    if (allUtxos.length === 0) {
-      return { success: false, error: 'No UTXOs available. Fund the address first.' };
-    }
-
-    // Select UTXOs
-    const scriptByteLen = scriptHex.length / 2;
-    const selected = selectUtxos(allUtxos, satoshis, scriptByteLen);
-
-    // Build change script
-    const changeScript = buildP2PKHScript(address);
-
-    // Build unsigned transaction
-    const { tx, inputCount } = buildDeployTransaction(scriptHex, selected, satoshis, address, changeScript);
-
-    // Sign each input
-    const txHex = tx.toHex();
-    for (let i = 0; i < inputCount; i++) {
-      const sigHex = await signer.sign(txHex, i, changeScript, selected[i].satoshis);
-      const pubKeyHex = await signer.getPublicKey();
-
-      // Build P2PKH unlocking script: <sig> <pubkey>
-      const sigBytes = Buffer.from(sigHex, 'hex');
-      const pubBytes = Buffer.from(pubKeyHex, 'hex');
-
-      let unlockHex = '';
-      // Push signature
-      unlockHex += sigBytes.length.toString(16).padStart(2, '0') + sigHex;
-      // Push pubkey
-      unlockHex += pubBytes.length.toString(16).padStart(2, '0') + pubKeyHex;
-
-      tx.inputs[i].unlockingScript = UnlockingScript.fromHex(unlockHex);
-    }
-
-    // Broadcast
-    const txid = await provider.broadcast(tx);
-
-    return { success: true, txid, address };
+    // src/main/deploy.js holds the refusals and the one-at-a-time flag
+    return await deployScript(params || {}, {
+      runar: await getRunarSdk(),
+      UnlockingScript: getBsvSdk().UnlockingScript
+    });
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -513,32 +460,6 @@ When explaining scripts:
 When fixing errors:
 - Identify the root cause
 - Provide the corrected script`;
-
-function makeApiRequest(url, options, body) {
-  return new Promise((resolve, reject) => {
-    const req = https.request(url, options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(JSON.parse(data));
-        } else {
-          let errMsg;
-          try {
-            const parsed = JSON.parse(data);
-            errMsg = parsed.error?.message || JSON.stringify(parsed);
-          } catch {
-            errMsg = data;
-          }
-          reject(new Error(`API error (${res.statusCode}): ${errMsg}`));
-        }
-      });
-    });
-    req.on('error', reject);
-    req.write(JSON.stringify(body));
-    req.end();
-  });
-}
 
 ipcMain.handle('ai-chat', async (event, { provider, apiKey, model, messages, editorContent }) => {
   try {
@@ -646,39 +567,38 @@ ipcMain.handle('open-chain-dialog', async (event) => {
 
 ipcMain.handle('load-chain-project', async (event, filePath) => {
   try {
-    const projectDir = path.dirname(filePath);
+    // The renderer names the project, so only honour one the user picked in
+    // open-chain-dialog, the same rule save-file applies
+    if (typeof filePath !== 'string' || !grantedFiles.has(path.resolve(filePath))) {
+      return {
+        success: false,
+        error: 'Refusing to load a chain project that was not chosen in a file dialog this session: ' + filePath
+      };
+    }
+
+    const projectDir = path.dirname(path.resolve(filePath));
     const projectContent = await fs.readFile(filePath, 'utf-8');
     const project = JSON.parse(projectContent);
 
-    // Read all referenced .bscript files
+    // The contract is the only file read. Method unlock scripts are not
+    // executed (the chain engine supplies params and preimage itself), so the
+    // `unlock` field is ignored.
+    // The second check follows symlinks, which a downloaded project can carry.
+    const contractPath = resolveProjectFile(projectDir, project.contract);
+    resolveProjectFile(await fs.realpath(projectDir), await fs.realpath(contractPath));
+
     const bscriptFiles = {};
+    bscriptFiles[project.contract] = await fs.readFile(contractPath, 'utf-8');
 
-    // Read contract file
-    if (project.contract) {
-      const contractPath = path.resolve(projectDir, project.contract);
-      bscriptFiles[project.contract] = await fs.readFile(contractPath, 'utf-8');
-    }
-
-    // Read all method unlock scripts
-    if (project.methods) {
-      for (const method of project.methods) {
-        if (method.unlock) {
-          const unlockPath = path.resolve(projectDir, method.unlock);
-          try {
-            bscriptFiles[method.unlock] = await fs.readFile(unlockPath, 'utf-8');
-          } catch (e) {
-            // Empty unlock script is valid
-            bscriptFiles[method.unlock] = '';
-          }
-        }
-      }
-    }
+    // Save writes the contract, so it is granted the way an opened file is
+    grantPath(contractPath);
 
     return {
       success: true,
       project: project,
       bscriptFiles: bscriptFiles,
-      projectPath: filePath
+      projectPath: filePath,
+      contractPath: contractPath
     };
   } catch (error) {
     return { success: false, error: error.message };

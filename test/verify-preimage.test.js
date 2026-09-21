@@ -94,3 +94,29 @@ test('the synthetic context comes from the VM, not from a copy', async () => {
   assert.strictEqual(context.transactionVersion, 1);
   assert.strictEqual(context.sourceSatoshis, 100000);
 });
+
+test('the preimage signs the script after the last code separator before the binding', async () => {
+  // F65: the subscript ignored OP_CODESEPARATOR, so this passed in the
+  // simulator and failed in the ScriptVM at the binding
+  const { ScriptVM, hexToBytes } = await loadVm();
+  const { subscriptHexFor } = require('../src/main/verify-preimage');
+  const source = 'codeSeparator checkPreimage drop 1';
+  const lockingHex = await compile(source);
+
+  assert.strictEqual(lockingHex.slice(0, 2), 'ab');
+  assert.strictEqual(subscriptHexFor(lockingHex), lockingHex.slice(2));
+  // A separator after the binding, or inside a push, is not the cut
+  assert.strictEqual(subscriptHexFor(await compile('checkPreimage drop codeSeparator 1')),
+    await compile('checkPreimage drop codeSeparator 1'));
+  assert.strictEqual(subscriptHexFor(await compile('0xab drop checkPreimage drop 1')),
+    await compile('0xab drop checkPreimage drop 1'));
+
+  const { preimageHex, sighashHex } = await preimageForScript(lockingHex);
+  const vm = new ScriptVM().execute(hexToBytes(pushDataHex(preimageHex)), hexToBytes(lockingHex));
+  assert.strictEqual(vm.success, true, `the ScriptVM refused it: ${vm.error}`);
+
+  const interp = new ScriptInterpreter();
+  interp.setTransactionContext({ sighash: sighashHex });
+  const local = await interp.run(source, ['0x' + preimageHex]);
+  assert.strictEqual(local.success, true, local.error);
+});

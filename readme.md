@@ -16,11 +16,11 @@ Script, with visual stack inspection. Built with Electron and Monaco Editor.
 - **Execution history**: every executed opcode with a description of what it did
 - **87 opcodes**, including the BSV restored set (`cat`, `split`, `mul`, `div`, `mod`, `and`, `or`, `xor`, `invert`, `lShift`, `rShift`, `substr`, `left`, `right`, `2mul`, `2div`)
 - **Real hashing**: SHA-256, SHA-1, RIPEMD-160, HASH256, HASH160 through `@bsv/sdk`
-- **Transaction version rules**: version 1 applies the strict consensus rules (minimal pushes, minimal number encoding, low-S signatures, NULLDUMMY, clean stack, and no Chronicle sighash); version 2 and above relax all of them
+- **Transaction version rules**: version 1 applies the strict consensus rules (minimal number encoding, low-S signatures, NULLDUMMY and clean stack); version 2 and above relax all of them. The compiler always emits minimal pushes. The Chronicle sighash rule follows the version of the transaction in the signature context, not this setting.
 - **Signatures**: simulated by default, or verified for real against a transaction context you supply
 
 ### Verification against a second engine
-- **Verify (Cmd/Ctrl + Shift + V)**: compiles the script and runs it through Rúnar's `ScriptVM`, then compares the result with the built-in interpreter
+- **Verify (Cmd/Ctrl + Shift + V)**: compiles the script and runs it through Rúnar's `ScriptVM` under the selected transaction version, then compares the verdict and the final stack with the built-in interpreter. It reports MATCH, BOTH FAILED with both reasons, or MISMATCH.
 - Scripts that use `checkPreimage` (OP_PUSH_TX) get a preimage derived from the ScriptVM's own synthetic spend, so both engines check the same bytes. Turn this off in Settings to compare without it.
 - When a script checks a signature the interpreter only pretends to verify, Verify says so instead of reporting a false mismatch
 
@@ -29,18 +29,18 @@ Script, with visual stack inspection. Built with Electron and Monaco Editor.
   on the stack to the transaction being signed. In the debugger it is only checked
   when a transaction context is configured; without one it is a no-op and says so
   in the execution history. Verify always checks it for real.
-- **Preimage field extractors**: `extractVersion`, `extractHashPrevouts`, `extractHashSequence`, `extractOutpoint`, `extractInputIndex`, `extractAmount`, `extractSequence`, `extractOutputHash`, `extractLocktime`, `extractSigHashType`
+- **Preimage field extractors**: `extractVersion`, `extractHashPrevouts`, `extractHashSequence`, `extractOutpoint`, `extractOutpointIndex`, `extractAmount`, `extractSequence`, `extractOutputHash`, `extractLocktime`, `extractSigHashType`
 - **Chain mode**: load a `.bsm.json` project and step a stateful contract through its methods. The chain panel simulates the transitions; it does not broadcast them.
 
 ### Development tools
-- **Macros**: `xSwap_n`, `xDrop_n`, `xRot_n`, `hashCat`, `LOOP[n]{body}`
+- **Macros**: `xSwap_n` (swap the top item with the item n below it), `xDrop_n` (drop the item n below the top), `xRot_n` (move the item n below the top to the top), `hashCat`, `LOOP[n]{body}`. `xSwap_0` and `xRot_0` do nothing.
 - **Imports**: wildcard, named and `@define` blocks across `.bscript` files
 - **Examples**: scripts and importable macro libraries in `examples/`
 - **AI assistant**: optional panel that answers Bitcoin Script questions (needs your own API key)
-- **Deploy**: fund and broadcast a locking script from a WIF. This spends real coins on the selected network.
+- **Deploy**: fund and broadcast a locking script from a WIF. This spends real coins on the selected network. Mainnet asks for confirmation, and an empty script is refused.
 
 ### File management
-- Native File/Edit/View/Run/Tools/Help menus, recent files, unsaved-work prompts
+- Native File/Edit/View/Run/Tools/Help menus, unsaved-work prompts
 - File dialogs start in `examples/`, then in the last directory used
 
 ### Security
@@ -82,6 +82,9 @@ single-byte constants; anything else becomes a minimally encoded push.
 ### Flow control
 `nop`, `if`, `notIf`, `else`, `endIf`, `verify`, `return`, `codeSeparator`,
 `ver`, `verIf`, `verNotIf`
+
+Each `if` or `notIf` takes one `else`. A second `else` fails, as on BSV nodes
+since Genesis.
 
 ### Stack
 `toAltStack`, `fromAltStack`, `ifDup`, `depth`, `drop`, `dup`, `nip`, `over`,
@@ -200,11 +203,14 @@ instruction has run.
 ## Settings
 
 - **Signature verification**: simulate `checkSig`, or verify against a supplied
-  sighash, raw transaction or preimage
+  sighash or raw transaction. The preimage mode computes a preimage and puts it
+  on the initial stack.
 - **Verification**: whether Verify substitutes a matching preimage for
   `checkPreimage` scripts (on by default)
 - **Transaction version**: 1 for the strict rules, 2 or above to relax them
-- **Network**: mainnet, testnet or regtest, used by Deploy and balance lookups
+- **Bitcoin Network**: mainnet or testnet, used by Deploy and balance lookups.
+  A testnet deploy needs a testnet WIF, which starts with `c`. WIFs that start
+  with `5` are not supported.
 - **AI assistant**: provider, model and API key
 
 ## Project layout

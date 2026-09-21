@@ -1,5 +1,24 @@
 var chainEngine = new ChainEngine();
 var chainModeActive = false;
+// The contract file of the loaded project. The Chain Mode button goes back
+// into chain mode only while the editor still holds this file.
+var chainContractPath = null;
+
+// The interpreter's transaction context as Settings left it, held while a
+// chain run borrows the interpreter, so the run can put it back
+var chainBorrowedContext = null;
+
+function restoreChainContext() {
+  if (!chainBorrowedContext) return;
+  interpreter.txContext = chainBorrowedContext.context;
+  interpreter.txContextMode = chainBorrowedContext.mode;
+  chainBorrowedContext = null;
+}
+
+function clearNewStateInput() {
+  var newStateInput = document.getElementById('chain-new-state-input');
+  if (newStateInput) newStateInput.value = '';
+}
 
 function toggleChainMode(enabled) {
   chainModeActive = enabled;
@@ -12,6 +31,7 @@ function toggleChainMode(enabled) {
     chainPanel.style.display = 'flex';
     if (chainToggle) chainToggle.classList.add('active');
   } else {
+    restoreChainContext();
     stackPanel.style.display = 'flex';
     chainPanel.style.display = 'none';
     if (chainToggle) chainToggle.classList.remove('active');
@@ -20,6 +40,8 @@ function toggleChainMode(enabled) {
 
 async function openChainProject() {
   try {
+    if (!(await confirmUnsavedChanges())) return;
+
     // Open file dialog filtered for JSON files
     var dialogResult = await window.electronAPI.openChainDialog();
     if (!dialogResult.success || dialogResult.canceled) return;
@@ -30,7 +52,7 @@ async function openChainProject() {
       return;
     }
 
-    chainEngine.loadProject(loadResult.project, loadResult.bscriptFiles);
+    await chainEngine.loadProject(loadResult.project, loadResult.bscriptFiles, loadResult.contractPath);
 
     // Switch to chain mode
     toggleChainMode(true);
@@ -38,9 +60,13 @@ async function openChainProject() {
     // Load the contract source into the editor
     var contractSrc = loadResult.bscriptFiles[loadResult.project.contract] || '';
     editor.setValue(contractSrc);
-    currentFilePath = dialogResult.filePath;
+    // The editor holds the contract, so Save must write the contract file,
+    // not the .bsm.json the dialog picked
+    currentFilePath = loadResult.contractPath;
+    chainContractPath = loadResult.contractPath;
     hasUnsavedChanges = false;
     updateWindowTitle();
+    clearNewStateInput();
 
     // Render the chain panel
     renderChainPanel();
@@ -188,19 +214,42 @@ function collectNewState() {
   // For the MVP, the new state is provided via a simple input
   var newStateInput = document.getElementById('chain-new-state-input');
   if (newStateInput && newStateInput.value.trim()) {
+    // Throws on bad JSON. Carrying on with the current state reported a
+    // successful transition the user never asked for.
+    var parsed;
     try {
-      var parsed = JSON.parse(newStateInput.value.trim());
-      for (var key in parsed) {
-        if (newState.hasOwnProperty(key)) {
-          newState[key] = parsed[key];
-        }
-      }
+      parsed = JSON.parse(newStateInput.value.trim());
     } catch (e) {
-      // Ignore parse errors, use current state
+      throw new Error('New State is not valid JSON: ' + e.message);
+    }
+    for (var key in parsed) {
+      if (newState.hasOwnProperty(key)) {
+        newState[key] = parsed[key];
+      }
     }
   }
 
   return newState;
+}
+
+// Method parameter values as stack items, bottom to top. Same two forms the
+// initial stack box accepts. Throws naming the parameter otherwise.
+function chainParamStack(method, paramValues) {
+  var items = [];
+  var params = method.params || [];
+  for (var j = 0; j < params.length; j++) {
+    var val = paramValues[params[j].name] || '';
+    if (!val) {
+      items.push('0x00');
+      continue;
+    }
+    var parsed = parseStackItem(val);
+    if (parsed.error) {
+      throw new Error('Parameter "' + params[j].name + '" must be a decimal number or 0x-prefixed hex, got: ' + val);
+    }
+    items.push(parsed.value);
+  }
+  return items;
 }
 
 // Build the stack the contract expects for the next transition:
@@ -225,6 +274,14 @@ async function prepareChainRun() {
   }
 
   try {
+    // The UTXO was built from the contract as it was loaded. Running edited
+    // text against it proves nothing about either version.
+    if ((await chainEngine.compileContract(editor.getValue(), currentFilePath)) !== chainEngine.contractHex) {
+      logToConsole('The contract in the editor no longer matches the loaded chain project. ' +
+        'Save it and open the project again to run the chain against the new contract.', 'error');
+      return null;
+    }
+
     // Collect method params from UI
     var paramValues = {};
     var paramInputs = document.querySelectorAll('#chain-method-params .chain-param-input');
@@ -274,22 +331,7 @@ async function prepareChainRun() {
     }
 
     // Build initial stack (bottom to top): [method_params..., preimage]
-    var initialStack = [];
-
-    // Add method parameter values
-    if (method.params) {
-      for (var j = 0; j < method.params.length; j++) {
-        var p = method.params[j];
-        var val = paramValues[p.name] || '';
-        if (val.startsWith('0x')) {
-          initialStack.push(val);
-        } else if (/^-?\d+$/.test(val)) {
-          initialStack.push(Number(val));
-        } else {
-          initialStack.push(val || '0x00');
-        }
-      }
-    }
+    var initialStack = chainParamStack(method, paramValues);
 
     // Add the preimage. checkPreimage compiles to the OP_PUSH_TX binding,
     // which derives its own signature from the preimage and leaves the
@@ -298,7 +340,11 @@ async function prepareChainRun() {
 
     // Give the interpreter the transaction it is spending, so checkPreimage
     // checks the preimage against the real sighash rather than waving it
-    // through.
+    // through. The context Settings configured is kept and the caller puts
+    // it back with restoreChainContext() when the run is over.
+    if (!chainBorrowedContext) {
+      chainBorrowedContext = { context: interpreter.txContext, mode: interpreter.txContextMode };
+    }
     interpreter.setTransactionContext({
       txHex: txResult.txHex,
       inputIndex: 0,
@@ -321,13 +367,24 @@ async function prepareChainRun() {
 }
 
 async function runChainTransition() {
+  await runExclusive(runChainTransitionNow);
+}
+
+async function runChainTransitionNow() {
   logToConsole('--- Chain Transition: Step ' + (chainEngine.stepCount + 1) + ' ---', 'info');
 
   var run = await prepareChainRun();
   if (!run) return;
 
   logToConsole('Executing contract...', 'info');
-  var result = await interpreter.run(editor.getValue(), run.initialStack);
+  // The transition replaces any step run in progress
+  executionMode = 'idle';
+  var result;
+  try {
+    result = await interpreter.run(editor.getValue(), run.initialStack, currentFilePath);
+  } finally {
+    restoreChainContext();
+  }
 
   if (result.success) {
     logToConsole('Transition succeeded!', 'success');
@@ -337,6 +394,7 @@ async function runChainTransition() {
       'warning');
 
     chainEngine.advanceChain(run.methodName, run.newState, run.txid);
+    clearNewStateInput();
 
     if (run.isTerminal) {
       logToConsole('Chain terminated (terminal method), so this transaction ' +
@@ -356,24 +414,9 @@ async function runChainTransition() {
 function resetChainState() {
   if (!chainEngine.project) return;
   chainEngine.resetChain();
+  clearNewStateInput();
   renderChainPanel();
   interpreter.reset();
   updateUI();
   logToConsole('Chain reset to initial state', 'info');
-}
-
-function viewMethodScript(methodName) {
-  // Load the method's unlock script into the editor
-  var method = chainEngine.getMethod(methodName);
-  if (!method) return;
-
-  // We don't have the raw source easily accessible here
-  // For now, show the compiled ASM
-  var hex = chainEngine.methodHexMap[methodName];
-  if (hex) {
-    logToConsole('Method ' + methodName + ' compiled hex: ' + hex, 'info');
-    logToConsole('Method ' + methodName + ' ASM: ' + disassemble(hex), 'info');
-  } else {
-    logToConsole('Method ' + methodName + ' has no unlock script (params-only)', 'info');
-  }
 }

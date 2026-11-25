@@ -19,6 +19,9 @@ const read = (name) => fs.readFileSync(path.join(EXAMPLES, `${name}.bscript`), '
 // documentation cannot drift apart.
 const preimageFrom = (name) => read(name).match(/0x02000000[0-9a-f]+/)[0];
 
+// The initial stack an example's @stack directive puts in place on Open
+const stackFrom = (name) => read(name).match(/^\/\/ @stack (.+)$/m)[1].split(' ');
+
 // An example that deliberately leaves more than one item on the stack says so
 // with a @txVersion directive, which the app applies on open. Version 1 would
 // reject it on the clean-stack rule.
@@ -37,17 +40,17 @@ const CASES = [
   { name: 'multisig-2of3', stack: [0, '0xaa', '0xbb'], expect: [1] },
   {
     name: 'covenant-output-hash',
-    stack: () => [preimageFrom('covenant-output-hash')],
+    stack: () => stackFrom('covenant-output-hash'),
     expect: [1]
   },
   {
     name: 'covenant-locktime',
-    stack: () => [preimageFrom('covenant-locktime')],
+    stack: () => stackFrom('covenant-locktime'),
     expect: [1]
   },
   {
     name: 'covenant-rate-limit',
-    stack: () => ['0xaa', preimageFrom('covenant-rate-limit')],
+    stack: () => stackFrom('covenant-rate-limit'),
     expect: [1]
   },
   {

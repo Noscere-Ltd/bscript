@@ -42,6 +42,7 @@ Script, with visual stack inspection. Built with Electron and Monaco Editor.
 ### File management
 - Native File/Edit/View/Run/Tools/Help menus, unsaved-work prompts
 - File dialogs start in `examples/`, then in the last directory used
+- Run settings save in the script as `// @key value` comment lines and apply on open. See the user guide.
 
 ### Security
 - Context isolation, sandbox, no node integration in the renderer
@@ -212,6 +213,10 @@ instruction has run.
   A testnet deploy needs a testnet WIF, which starts with `c`. WIFs that start
   with `5` are not supported.
 - **AI assistant**: provider, model and API key
+
+Transaction version, signature verification, the transaction context and the
+initial stack save in the script file. Open applies them. See
+[Settings saved in the script](user-guide.md#settings-saved-in-the-script).
 
 ## Project layout
 

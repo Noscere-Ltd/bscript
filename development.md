@@ -53,6 +53,7 @@ bscript/
 │       ├── interpreter.js       # Execution engine, macros, imports
 │       ├── compiler.js          # Instructions to hex, and disassembly
 │       ├── stack-input.js       # Initial stack parsing
+│       ├── script-settings.js   # `// @key value` settings in the script header
 │       ├── verify-plan.js       # What Verify is able to compare
 │       ├── push-tx-binding.js   # Vendored checkPreimage binding bytes
 │       ├── chain.js             # Chain project model
@@ -97,8 +98,9 @@ in dependency order:
 
 ```
 ../shared/push-data.js, ../shared/script-walk.js, escape-html.js,
-interpreter.js, syntax.js, push-tx-binding.js, stack-input.js,
-compiler.js, verify-plan.js, chain.js, chain-ui.js, app.js
+ai-markdown.js, interpreter.js, syntax.js, push-tx-binding.js,
+stack-input.js, script-settings.js, compiler.js, verify-plan.js,
+run-lock.js, chain.js, chain-ui.js, app.js
 ```
 
 A new renderer file has to be added to `APP_SCRIPTS` in `boot.js`, or nothing

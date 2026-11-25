@@ -873,6 +873,84 @@ async function confirmUnsavedChanges() {
   return confirm('You have unsaved changes. Continue anyway?');
 }
 
+// Opening a file replaces the run settings with the ones its header names,
+// and the defaults for any it leaves out. See script-settings.js.
+async function restoreScriptSettings(text) {
+  const { values, errors } = parseScriptSettings(text);
+  errors.forEach((e) => logToConsole(`Script settings: ${e}`, 'warning'));
+
+  settings.txVersion = Number(values.txVersion || 1);
+  interpreter.txVersion = settings.txVersion;
+  document.querySelector(`input[name="tx-version"][value="${settings.txVersion}"]`).checked = true;
+
+  settings.enableSignatures = values.signatures === 'on';
+  interpreter.enableSignatures = settings.enableSignatures;
+  document.getElementById('enable-signatures').checked = settings.enableSignatures;
+  document.getElementById('tx-context-settings').style.display =
+    settings.enableSignatures ? 'block' : 'none';
+
+  interpreter.setTransactionContext(null);
+  appliedPrevScript = null;
+  const mode = values.sighash ? 'sighash' : values.spendingTx ? 'transaction' : null;
+  document.getElementById('sighash-input').value = values.sighash || '';
+  document.getElementById('tx-hex-input').value = values.spendingTx || '';
+  document.getElementById('input-index').value = values.inputIndex || '0';
+  document.getElementById('prev-script-hex').value = values.prevScript || '';
+  document.getElementById('prev-satoshis').value = values.prevSatoshis || '0';
+
+  document.getElementById('initial-stack-input').value = values.stack || '';
+  updateStackPreview();
+
+  if (mode) {
+    document.querySelector(`input[name="tx-context-mode"][value="${mode}"]`).checked = true;
+    toggleTxContextMode({ target: { value: mode } });
+    if (!(await applyTransactionContext())) return;
+  }
+  const names = Object.keys(values);
+  if (names.length > 0) logToConsole(`Script settings applied: ${names.join(', ')}`, 'info');
+}
+
+// The header Save writes: every run setting that differs from the default
+function currentScriptSettings() {
+  const values = {};
+  if (settings.txVersion !== 1) values.txVersion = String(settings.txVersion);
+  if (settings.enableSignatures) values.signatures = 'on';
+  const ctx = interpreter.txContext;
+  if (interpreter.txContextMode === 'sighash') {
+    values.sighash = ctx.sighash;
+  } else if (interpreter.txContextMode === 'transaction') {
+    values.spendingTx = ctx.txHex;
+    values.inputIndex = String(ctx.inputIndex);
+    values.prevScript = appliedPrevScript || ctx.prevScriptHex;
+    values.prevSatoshis = String(ctx.satoshis);
+  }
+  values.stack = splitStackInput(document.getElementById('initial-stack-input').value).join(' ');
+  return values;
+}
+
+// Writes the settings header into the editor before a save. Chain mode derives
+// its own stack and context, so the contract keeps its text as it is.
+function editorTextForSave() {
+  if (chainModeActive) return editor.getValue();
+  const text = editor.getValue();
+  const next = writeScriptSettings(text, currentScriptSettings());
+  if (next !== text) {
+    // Replace only the span that changed, as an edit rather than setValue, so
+    // Undo works and the view stays put on a long script
+    let start = 0;
+    while (start < text.length && text[start] === next[start]) start++;
+    let end = 0;
+    while (end < text.length - start && end < next.length - start &&
+      text[text.length - 1 - end] === next[next.length - 1 - end]) end++;
+    const model = editor.getModel();
+    editor.executeEdits('script-settings', [{
+      range: monaco.Range.fromPositions(model.getPositionAt(start), model.getPositionAt(text.length - end)),
+      text: next.slice(start, next.length - end)
+    }]);
+  }
+  return next;
+}
+
 async function newFile() {
   if (!(await confirmUnsavedChanges())) return;
 
@@ -909,6 +987,7 @@ async function openFile() {
       updateUI();
       updateWindowTitle();
       logToConsole(`Loaded: ${result.filePath}`, 'success');
+      await restoreScriptSettings(result.content);
     } else {
       logToConsole(`Error loading file: ${result.error}`, 'error');
     }
@@ -919,7 +998,7 @@ async function openFile() {
 
 async function saveFile() {
   try {
-    const content = editor.getValue();
+    const content = editorTextForSave();
     const result = await window.electronAPI.saveFile({
       content,
       filePath: currentFilePath
@@ -944,7 +1023,7 @@ async function saveFile() {
 
 async function saveFileAs() {
   try {
-    const content = editor.getValue();
+    const content = editorTextForSave();
     const result = await window.electronAPI.saveFile({
       content,
       filePath: null // Force save dialog
@@ -1095,8 +1174,11 @@ function toggleTxContextMode(event) {
   preimageSection.style.display = mode === 'preimage' ? 'block' : 'none';
 }
 
-function applyTransactionContext() {
-  const statusEl = document.getElementById('tx-context-status');
+// The Previous Output Script field as last applied, so Save can write `self`
+// back rather than the compiled hex
+let appliedPrevScript = null;
+
+async function applyTransactionContext() {
   const mode = document.querySelector('input[name="tx-context-mode"]:checked').value;
 
   try {
@@ -1116,11 +1198,18 @@ function applyTransactionContext() {
     } else if (mode === 'transaction') {
       const txHex = document.getElementById('tx-hex-input').value.trim();
       const inputIndex = parseInt(document.getElementById('input-index').value);
-      const prevScriptHex = document.getElementById('prev-script-hex').value.trim();
+      const prevScript = document.getElementById('prev-script-hex').value.trim();
       const satoshis = parseInt(document.getElementById('prev-satoshis').value);
 
       if (!txHex) throw new Error('Transaction hex is required');
-      if (!prevScriptHex) throw new Error('Previous output script is required');
+      if (!prevScript) throw new Error('Previous output script is required');
+      // ponytail: `self` is compiled once here, so an edit after Apply needs Apply again
+      let prevScriptHex = prevScript;
+      if (prevScript === 'self') {
+        const tempInterpreter = new ScriptInterpreter();
+        await tempInterpreter.parse(editor.getValue(), [], currentFilePath);
+        prevScriptHex = compileInstructionsToHex(tempInterpreter.instructions);
+      }
       if (isNaN(inputIndex) || inputIndex < 0) throw new Error('Invalid input index');
       if (isNaN(satoshis) || satoshis < 0) throw new Error('Invalid satoshi amount');
 
@@ -1131,17 +1220,21 @@ function applyTransactionContext() {
         satoshis
       });
 
+      appliedPrevScript = prevScript;
       showTxContextStatus('Transaction context applied', 'success');
       logToConsole(`Transaction context set: full transaction mode (input ${inputIndex})`, 'info');
     }
+    return true;
   } catch (error) {
     showTxContextStatus(`Error: ${error.message}`, 'error');
     logToConsole(`Transaction context error: ${error.message}`, 'error');
+    return false;
   }
 }
 
 function clearTransactionContext() {
   interpreter.setTransactionContext(null);
+  appliedPrevScript = null;
 
   // Clear input fields
   document.getElementById('sighash-input').value = '';

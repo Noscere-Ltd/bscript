@@ -71,11 +71,11 @@ const renderer = (name) =>
 
 // The compiler goes on the global object, because interpreter.js reads it
 // there the way it does in the renderer, where both are global scripts.
-const { compileInstructionsToHex, disassemble } = new Function(
+const { compileInstructionsToHex, disassemble, OPCODE_MAP } = new Function(
   fs.readFileSync(path.join(__dirname, '..', 'src', 'shared', 'push-data.js'), 'utf8') +
   renderer('push-tx-binding.js') + renderer('compiler.js') +
   '\nglobalThis.compileInstructionsToHex = compileInstructionsToHex;' +
-  '\nreturn { compileInstructionsToHex, disassemble };'
+  '\nreturn { compileInstructionsToHex, disassemble, OPCODE_MAP };'
 )();
 
 // A 181-byte BIP-143 preimage with recognisable field values: version 2,
@@ -144,5 +144,5 @@ async function top(script, initialStack = [], txVersion = 1) {
 module.exports = {
   ScriptInterpreter, PREIMAGE, opcodeInterpreter, narrow, narrowAll,
   exec, stack, failure, top,
-  compileInstructionsToHex, disassemble
+  compileInstructionsToHex, disassemble, OPCODE_MAP
 };

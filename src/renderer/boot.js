@@ -13,6 +13,7 @@ const APP_SCRIPTS = [
   'syntax.js',
   'push-tx-binding.js',
   'stack-input.js',
+  'script-settings.js',
   'compiler.js',
   'verify-plan.js',
   'run-lock.js',

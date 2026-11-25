@@ -1,0 +1,17 @@
+// P2PK baseline (35 byte locking script)
+//
+// Source: github.com/linzhm/bsv-script-lab @ 0571c7c, projects/p2pk-p2pkh-baseline.
+// Converted from the published script bytes one token per line. Do not edit by hand:
+// test/lab-vectors.test.js checks this file compiles back to the same bytes.
+//
+// The settings below run the valid spend "p2pk/valid" with a real signature check.
+// The app applies them when the file is opened.
+// @signatures on
+// @spendingTx 0100000001c663524d8c8b9aae8323ae58b2eb6e982a57e7ec3307898130dd2022959e29da0000000049483045022100b01b5660ddf244ea82d9018a9f4a4cf372924387dd8f300f753ffff7a2620378022045d8d32eb66afa5a912989dbf4da684a5e20e68c10529e0c5b362590f31b961a41ffffffff0128230000000000001976a914751e76e8199196d454941c45d1b3a323f1433bd688ac00000000
+// @inputIndex 0
+// @prevScript self
+// @prevSatoshis 10000
+// @stack 0x3045022100b01b5660ddf244ea82d9018a9f4a4cf372924387dd8f300f753ffff7a2620378022045d8d32eb66afa5a912989dbf4da684a5e20e68c10529e0c5b362590f31b961a41
+//
+0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+checkSig

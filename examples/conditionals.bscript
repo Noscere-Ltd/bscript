@@ -1,6 +1,6 @@
 // Bitcoin Script Example: Conditional Execution
 //
-// Transaction version: 2
+// @txVersion 2
 // It keeps every intermediate value on the stack to show the steps, and
 // version 1 requires exactly one item at the end.
 //

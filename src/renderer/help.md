@@ -231,7 +231,7 @@ pasted transaction has version 1.
 
 Either way the script fails if the stack is empty at the end or the top item is
 false. Teaching scripts that leave several values on the stack need version 2,
-and the shipped examples say so in a comment at the top.
+and the shipped examples that need it carry `// @txVersion 2` at the top.
 
 ## Signature Verification
 
@@ -246,6 +246,45 @@ them checked for real. The context can be:
 The **preimage** mode is a calculator, not a context. It computes a preimage
 and its signature from those same fields, and **Inject to Stack** puts both on
 the initial stack. Apply Context does nothing in preimage mode.
+
+## Script Settings
+
+A script can carry its run settings as comment lines at the top of the file.
+The compiler skips comments, so the settings do not change the script bytes.
+
+```
+// @txVersion 2
+// @signatures on
+// @spendingTx 0200000001...
+// @inputIndex 0
+// @prevScript self
+// @prevSatoshis 1000
+// @stack 0x3045... 0x0279...
+```
+
+| Key | Value |
+|-----|-------|
+| `@txVersion` | `1` or `2` |
+| `@signatures` | `on` or `off` |
+| `@sighash` | 64 hex characters, for a sighash context |
+| `@spendingTx` | spending transaction hex, for a transaction context |
+| `@inputIndex` | input index in the spending transaction |
+| `@prevScript` | previous locking script hex, or `self` for this script compiled |
+| `@prevSatoshis` | satoshis of the previous output |
+| `@stack` | initial stack, bottom to top |
+
+**Open** reads these lines from the comment block above the first opcode. It
+sets each named setting, sets every other one to its default, and applies the
+transaction context. A file without these lines also resets the settings to
+the defaults. Open ignores other keys and logs a warning, so a file cannot set
+the network, the AI key or the deploy fields.
+
+**Save** writes the current settings back into those lines. It writes only
+settings that differ from the default, and it writes only an applied context.
+Chain mode does not write the lines.
+
+Apply Context compiles `self` once. After you edit the script, press Apply
+Context again.
 
 ## Verify (Cmd/Ctrl + Shift + V)
 
@@ -309,6 +348,8 @@ Example scripts are available in the `examples/` directory:
 - `covenant-output-hash.bscript` - A covenant on the outputs
 - `covenant-rate-limit.bscript` - An owner signature plus a covenant
 - `counter-chain/` - A stateful contract for chain mode
+- `lab/` - P2PK, P2PKH, Lamport, P-256 and SM2 spends from bsv-script-lab, with
+  their settings in the file
 
 ## Notes
 

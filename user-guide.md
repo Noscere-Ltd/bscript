@@ -13,13 +13,14 @@ changing the app itself.
 3. [The end-of-script verdict](#the-end-of-script-verdict)
 4. [Transaction version](#transaction-version)
 5. [Signatures](#signatures)
-6. [Verify: checking against a second engine](#verify-checking-against-a-second-engine)
-7. [Covenants and OP_PUSH_TX](#covenants-and-op_push_tx)
-8. [Chain mode](#chain-mode)
-9. [Deploying a script](#deploying-a-script)
-10. [The AI assistant](#the-ai-assistant)
-11. [Macros and imports](#macros-and-imports)
-12. [Troubleshooting](#troubleshooting)
+6. [Settings saved in the script](#settings-saved-in-the-script)
+7. [Verify: checking against a second engine](#verify-checking-against-a-second-engine)
+8. [Covenants and OP_PUSH_TX](#covenants-and-op_push_tx)
+9. [Chain mode](#chain-mode)
+10. [Deploying a script](#deploying-a-script)
+11. [The AI assistant](#the-ai-assistant)
+12. [Macros and imports](#macros-and-imports)
+13. [Troubleshooting](#troubleshooting)
 
 ## The window
 
@@ -46,11 +47,12 @@ state counters: instruction pointer, total instructions, instructions executed.
 **Console** (bottom). Results, errors, warnings and status. Everything the
 application tells you appears here, so read it when something is unexpected.
 
-### Settings do not persist
+### Which settings persist
 
-Settings live in memory for the session. Closing SVSCRIPT resets the
-transaction version, the network, signature verification, the transaction
-context and the AI key. Set them again after a restart.
+The network and the AI key live in memory for the session. Closing SVSCRIPT
+resets them. The transaction version, signature verification, the transaction
+context and the initial stack are saved in the script file. See
+[Settings saved in the script](#settings-saved-in-the-script).
 
 ## Writing and running a script
 
@@ -100,10 +102,11 @@ Here `10 20 add dup 5 mul` ran every instruction without error. Two items were
 left, so at version 1 the verdict is still a failure, and the console names the
 rule.
 
-The shipped examples that need version 2 declare it in a comment at the top:
+The shipped examples that need version 2 declare it in a comment at the top.
+Open applies it:
 
 ```javascript
-// Transaction version: 2
+// @txVersion 2
 ```
 
 ## Transaction version
@@ -168,6 +171,58 @@ transaction context as well.
 fields. It keeps the preimage fields.
 
 ![The three transaction context modes in Settings](docs/images/signature-context.png)
+
+## Settings saved in the script
+
+A script file can carry the settings it needs to run. Each setting is a comment
+line at the top of the file, in the form `// @key value`. The compiler skips
+comments, so these lines do not change the script bytes.
+
+`examples/lab/p2pkh-r1.bscript` carries a full transaction context:
+
+```javascript
+// @txVersion 2
+// @signatures on
+// @spendingTx 02000000011242cd1e...
+// @inputIndex 0
+// @prevScript self
+// @prevSatoshis 1000
+// @stack 0x0200000085e4... 0x046b17d1... 0x7bd25ffe... 0x39d184f3... 0
+```
+
+| Key | Value | Setting |
+|-----|-------|---------|
+| `@txVersion` | `1` or `2` | Transaction version |
+| `@signatures` | `on` or `off` | Signature verification |
+| `@sighash` | 64 hex characters | Sighash context |
+| `@spendingTx` | hex | Spending Transaction, for a transaction context |
+| `@inputIndex` | number | Input Index |
+| `@prevScript` | hex, or `self` | Previous Output Script. `self` is this script, compiled. |
+| `@prevSatoshis` | number | Previous Output Satoshis |
+| `@stack` | stack items, bottom to top | Initial stack |
+
+### Open
+
+Open reads the `@` lines from the comment block above the first opcode. It sets
+each named setting and sets every other one to its default. If the file names a
+sighash or a spending transaction, Open applies that context. A file without
+`@` lines resets all of these settings to the defaults.
+
+Open ignores any other key and logs a warning. A file cannot set the network,
+the AI key or the deploy fields.
+
+### Save
+
+Save writes the current settings into the `@` lines and replaces the old ones.
+It writes only settings that differ from the default. It writes the context
+that was last applied, not values typed into the form without Apply Context.
+In chain mode, Save leaves the `@` lines as they are.
+
+### Limits
+
+- **Apply Context** compiles `self` once. After you edit the script, press
+  **Apply Context** again.
+- Changing a setting does not mark the file as unsaved.
 
 ## Verify: checking against a second engine
 
@@ -470,4 +525,5 @@ Settings and supply a transaction context.
 - `readme.md` — the full opcode list and feature reference
 - The in-app Help panel — macros, imports and opcode descriptions
 - `examples/` — seventeen scripts, a macro library, and a chain project
+- `examples/lab/` — five signature spends from bsv-script-lab that run on open
 - `development.md` — extending SVSCRIPT

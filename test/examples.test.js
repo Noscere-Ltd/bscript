@@ -20,9 +20,10 @@ const read = (name) => fs.readFileSync(path.join(EXAMPLES, `${name}.bscript`), '
 const preimageFrom = (name) => read(name).match(/0x02000000[0-9a-f]+/)[0];
 
 // An example that deliberately leaves more than one item on the stack says so
-// in its header. Version 1 would reject it on the clean-stack rule.
+// with a @txVersion directive, which the app applies on open. Version 1 would
+// reject it on the clean-stack rule.
 const versionOf = (name) => {
-  const declared = read(name).match(/^\/\/ Transaction version: (\d+)$/m);
+  const declared = read(name).match(/^\/\/ @txVersion (\d+)$/m);
   return declared ? Number(declared[1]) : 1;
 };
 

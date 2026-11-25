@@ -4,7 +4,7 @@
 // TIP: Use the "Initial Stack" panel on the left to provide input values!
 // Try entering a number like 42, 75, or 150 to see different execution paths.
 //
-// Transaction version: 2
+// @txVersion 2
 // The imported bitwise example leaves six items on the stack, and version 1
 // requires exactly one item at the end.
 import bitwise from './bitwise.bscript'

@@ -17,8 +17,8 @@
 //
 // In simulated mode, the extractors slice real byte offsets, so the top
 // item must be a full-length dummy preimage. This one carries an input
-// amount of 10000 satoshis:
-//   0xaa 0x0200000000000000000000000000000000000000000000000000000000000000000000001111111111111111111111111111111111111111111111111111111111111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa76a914bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb88ac1027000000000000ffffffffcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccce803000041000000
+// amount of 10000 satoshis. Open puts it on the stack:
+// @stack 0xaa 0x0200000000000000000000000000000000000000000000000000000000000000000000001111111111111111111111111111111111111111111111111111111111111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa76a914bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb88ac1027000000000000ffffffffcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccce803000041000000
 
 // --- Phase 1: Verify owner signature ---
 // Rotate the owner sig to top

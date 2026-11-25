@@ -62,6 +62,7 @@ const documentedStacks = (name) => {
     if (!comment) continue;
     let text = comment[1];
     if (/set initial stack to/i.test(text)) text = text.slice(text.lastIndexOf(':') + 1);
+    text = text.replace(/^\s*@stack\s/, '');
     const items = splitStackInput(text);
     if (items.length > 0 && items.every((item) => !parseStackItem(item).error)) {
       found.push(items.map((item) => parseStackItem(item).value));
